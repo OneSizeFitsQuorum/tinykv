@@ -36,10 +36,10 @@ func newMemoryStorageWithEnts(ents []pb.Entry) *MemoryStorage {
 func nextEnts(r *Raft, s *MemoryStorage) (ents []pb.Entry) {
 	// Transfer all unstable entries to "stable" storage.
 	s.Append(r.RaftLog.unstableEntries())
-	r.RaftLog.stabled = r.RaftLog.LastIndex()
+	r.RaftLog.stableTo(r.RaftLog.LastIndex(), r.RaftLog.lastTerm())
 
 	ents = r.RaftLog.nextEnts()
-	r.RaftLog.applied = r.RaftLog.committed
+	r.RaftLog.appliedTo(r.RaftLog.committed)
 	return ents
 }
 
@@ -63,7 +63,7 @@ func TestProgressLeader2AB(t *testing.T) {
 	// Send proposals to r1. The first 5 entries should be appended to the log.
 	propMsg := pb.Message{From: 1, To: 1, MsgType: pb.MessageType_MsgPropose, Entries: []*pb.Entry{{Data: []byte("foo")}}}
 	for i := 0; i < 5; i++ {
-		if pr := r.Prs[r.id]; pr.Match != uint64(i+1) || pr.Next != pr.Match+1 {
+		if pr := r.Prs.Progress[r.id]; pr.Match != uint64(i+1) || pr.Next != pr.Match+1 {
 			t.Errorf("unexpected progress %v", pr)
 		}
 		if err := r.Step(propMsg); err != nil {
@@ -175,7 +175,7 @@ func TestLeaderElectionOverwriteNewerLogs2AB(t *testing.T) {
 	// term 3 at index 2).
 	for i := range n.peers {
 		sm := n.peers[i].(*Raft)
-		entries := sm.RaftLog.entries
+		entries := sm.RaftLog.allEntries()
 		if len(entries) != 2 {
 			t.Fatalf("node %d: len(entries) == %d, want 2", i, len(entries))
 		}
@@ -733,8 +733,8 @@ func TestAllServerStepdown2AB(t *testing.T) {
 			if sm.RaftLog.LastIndex() != tt.windex {
 				t.Errorf("#%d.%d index = %v , want %v", i, j, sm.RaftLog.LastIndex(), tt.windex)
 			}
-			if uint64(len(sm.RaftLog.entries)) != tt.windex {
-				t.Errorf("#%d.%d len(ents) = %v , want %v", i, j, len(sm.RaftLog.entries), tt.windex)
+			if uint64(len(sm.RaftLog.unstable.entries)) != tt.windex {
+				t.Errorf("#%d.%d len(ents) = %v , want %v", i, j, len(sm.RaftLog.unstable.entries), tt.windex)
 			}
 			wlead := uint64(2)
 			if msgType == pb.MessageType_MsgRequestVote {
@@ -990,7 +990,7 @@ func TestLeaderIncreaseNext2AB(t *testing.T) {
 
 	nt.send(pb.Message{From: 1, To: 1, MsgType: pb.MessageType_MsgPropose, Entries: []*pb.Entry{{Data: []byte("somedata")}}})
 
-	p := sm.Prs[2]
+	p := sm.Prs.Progress[2]
 	if p.Next != wnext {
 		t.Errorf("next = %d, want %d", p.Next, wnext)
 	}
@@ -1063,7 +1063,7 @@ func TestProvideSnap2C(t *testing.T) {
 	sm.readMessages() // clear message
 
 	// force set the next of node 2 to less than the SnapshotMetadata.Index, so that node 2 needs a snapshot
-	sm.Prs[2].Next = 10
+	sm.Prs.Progress[2].Next = 10
 	sm.Step(pb.Message{From: 2, To: 1, MsgType: pb.MessageType_MsgPropose, Entries: []*pb.Entry{{Data: []byte("somedata")}}})
 
 	msgs := sm.readMessages()
@@ -1304,8 +1304,8 @@ func TestLeaderTransferToSlowFollower3A(t *testing.T) {
 
 	nt.recover()
 	lead := nt.peers[1].(*Raft)
-	if lead.Prs[3].Match != 1 {
-		t.Fatalf("node 1 has match %d for node 3, want %d", lead.Prs[3].Match, 1)
+	if lead.Prs.Progress[3].Match != 1 {
+		t.Fatalf("node 1 has match %d for node 3, want %d", lead.Prs.Progress[3].Match, 1)
 	}
 
 	// Transfer leadership to 3 when node 3 is lack of log.
@@ -1327,8 +1327,8 @@ func TestLeaderTransferAfterSnapshot3A(t *testing.T) {
 	nt.storage[1].Compact(lead.RaftLog.applied)
 
 	nt.recover()
-	if lead.Prs[3].Match != 1 {
-		t.Fatalf("node 1 has match %d for node 3, want %d", lead.Prs[3].Match, 1)
+	if lead.Prs.Progress[3].Match != 1 {
+		t.Fatalf("node 1 has match %d for node 3, want %d", lead.Prs.Progress[3].Match, 1)
 	}
 
 	// Transfer leadership to 3 when node 3 is lack of snapshot.

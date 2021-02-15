@@ -147,7 +147,7 @@ func testNonleaderStartElection(t *testing.T, state StateType) {
 	if r.State != StateCandidate {
 		t.Errorf("state = %s, want %s", r.State, StateCandidate)
 	}
-	if !r.votes[r.id] {
+	if !r.Prs.Votes[r.id] {
 		t.Errorf("vote for self = false, want true")
 	}
 	msgs := r.readMessages()
@@ -659,7 +659,7 @@ func TestFollowerAppendEntries2AB(t *testing.T) {
 		for _, ent := range tt.wents {
 			wents = append(wents, *ent)
 		}
-		if g := r.RaftLog.entries; !reflect.DeepEqual(g, wents) {
+		if g := r.RaftLog.allEntries(); !reflect.DeepEqual(g, wents) {
 			t.Errorf("#%d: ents = %+v, want %+v", i, g, wents)
 		}
 		var wunstable []pb.Entry
@@ -891,7 +891,7 @@ func commitNoopEntry(r *Raft, s *MemoryStorage) {
 	if r.State != StateLeader {
 		panic("it should only be used when it is the leader")
 	}
-	for id := range r.Prs {
+	for id := range r.Prs.Progress {
 		if id == r.id {
 			continue
 		}
@@ -909,8 +909,8 @@ func commitNoopEntry(r *Raft, s *MemoryStorage) {
 	// ignore further messages to refresh followers' commit index
 	r.readMessages()
 	s.Append(r.RaftLog.unstableEntries())
-	r.RaftLog.applied = r.RaftLog.committed
-	r.RaftLog.stabled = r.RaftLog.LastIndex()
+	r.RaftLog.appliedTo(r.RaftLog.committed)
+	r.RaftLog.stableTo(r.RaftLog.LastIndex(), r.RaftLog.lastTerm())
 }
 
 func acceptAndReply(m pb.Message) pb.Message {
