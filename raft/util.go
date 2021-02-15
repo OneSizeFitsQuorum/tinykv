@@ -61,8 +61,8 @@ func mustTerm(term uint64, err error) uint64 {
 }
 
 func nodes(r *Raft) []uint64 {
-	nodes := make([]uint64, 0, len(r.Prs))
-	for id := range r.Prs {
+	nodes := make([]uint64, 0, len(r.Prs.Progress))
+	for id := range r.Prs.Progress {
 		nodes = append(nodes, id)
 	}
 	sort.Sort(uint64Slice(nodes))
@@ -104,7 +104,7 @@ func mustTemp(pre, body string) string {
 func ltoa(l *RaftLog) string {
 	s := fmt.Sprintf("committed: %d\n", l.committed)
 	s += fmt.Sprintf("applied:  %d\n", l.applied)
-	for i, e := range l.entries {
+	for i, e := range l.allEntries() {
 		s += fmt.Sprintf("#%d: %+v\n", i, e)
 	}
 	return s
@@ -126,4 +126,24 @@ func IsResponseMsg(msgt pb.MessageType) bool {
 
 func isHardStateEqual(a, b pb.HardState) bool {
 	return a.Term == b.Term && a.Vote == b.Vote && a.Commit == b.Commit
+}
+
+func isSoftStateEqual(a, b *SoftState) bool {
+	return a.Lead == b.Lead && a.RaftState == b.RaftState
+}
+
+func transformToPointers(entries []pb.Entry) []*pb.Entry {
+	result := make([]*pb.Entry, 0, len(entries))
+	for i := range entries {
+		result = append(result, &entries[i])
+	}
+	return result
+}
+
+func transformFromPointers(entries []*pb.Entry) []pb.Entry {
+	result := make([]pb.Entry, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, *entry)
+	}
+	return result
 }

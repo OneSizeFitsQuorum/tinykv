@@ -313,7 +313,7 @@ func (p *peer) AnyNewPeerCatchUp(peerId uint64) bool {
 	}
 	if startPendingTime, ok := p.PeersStartPendingTime[peerId]; ok {
 		truncatedIdx := p.peerStorage.truncatedIndex()
-		progress, ok := p.RaftGroup.Raft.Prs[peerId]
+		progress, ok := p.RaftGroup.Raft.Prs.Progress[peerId]
 		if ok {
 			if progress.Match >= truncatedIdx {
 				delete(p.PeersStartPendingTime, peerId)
