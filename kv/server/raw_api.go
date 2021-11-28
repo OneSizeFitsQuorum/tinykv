@@ -2,8 +2,8 @@ package server
 
 import (
 	"context"
-	"github.com/pingcap-incubator/tinykv/proto/pkg/kvrpcpb"
 	"github.com/pingcap-incubator/tinykv/kv/storage"
+	"github.com/pingcap-incubator/tinykv/proto/pkg/kvrpcpb"
 )
 
 // The functions below are Server's Raw API. (implements TinyKvServer).
@@ -20,16 +20,10 @@ func (server *Server) RawGet(_ context.Context, req *kvrpcpb.RawGetRequest) (*kv
 	if err != nil {
 		return nil, err
 	}
-	if result == nil {
-		return &kvrpcpb.RawGetResponse{
-			NotFound: true,
-		}, nil
-	}
 	return &kvrpcpb.RawGetResponse{
-		NotFound: false,
+		NotFound: result == nil,
 		Value:    result,
 	}, nil
-	return nil, nil
 }
 
 // RawPut puts the target data into storage and returns the corresponding response
