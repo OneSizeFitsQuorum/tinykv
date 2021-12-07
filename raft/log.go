@@ -318,11 +318,6 @@ func (r *RaftLog) slice(lo, hi uint64) ([]pb.Entry, error) {
 			panic(err)
 		}
 
-		// check if ents has reached the size limitation
-		if uint64(len(storedEnts)) < min(hi, r.unstable.offset)-lo {
-			return storedEnts, nil
-		}
-
 		ents = storedEnts
 	}
 	if hi > r.unstable.offset {
