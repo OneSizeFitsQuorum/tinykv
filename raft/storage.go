@@ -118,12 +118,12 @@ func (ms *MemoryStorage) Entries(lo, hi uint64) ([]pb.Entry, error) {
 		log.Panicf("entries' hi(%d) is out of bound lastindex(%d)", hi, ms.lastIndex())
 	}
 
-	ents := ms.ents[lo-offset : hi-offset]
-	if len(ms.ents) == 1 && len(ents) != 0 {
-		// only contains dummy entries.
+	// only contains dummy entries.
+	if len(ms.ents) == 1 {
 		return nil, ErrUnavailable
 	}
-	return ents, nil
+
+	return ms.ents[lo-offset : hi-offset], nil
 }
 
 // Term implements the Storage interface.
