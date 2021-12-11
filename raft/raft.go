@@ -219,14 +219,17 @@ func newRaft(c *Config) *Raft {
 	if !IsEmptyHardState(hardState) {
 		r.loadState(hardState)
 	}
+	if c.Applied > 0 {
+		raftLog.appliedTo(c.Applied)
+	}
 	r.becomeFollower(r.Term, None)
 	return r
 }
 
 // sendAppend sends an append RPC with new entries (if any) and the
 // current commit index to the given peer. Returns true if a message was sent.
-func (r *Raft) sendAppend(to uint64) {
-	r.maybeSendAppend(to, true)
+func (r *Raft) sendAppend(to uint64) bool {
+	return r.maybeSendAppend(to, true)
 }
 
 // maybeSendAppend sends an append RPC with new entries to the given peer,
@@ -306,9 +309,6 @@ func (r *Raft) tick() {
 		r.electionElapsed++
 		if r.pastElectionTimeout() {
 			r.electionElapsed = 0
-		}
-		if r.State != StateLeader {
-			return
 		}
 		if r.pastHeartbeatTimeout() {
 			r.heartbeatElapsed = 0
@@ -659,9 +659,10 @@ func (r *Raft) appendEntry(es ...*pb.Entry) (accepted bool) {
 
 	// use latest "last" index after truncate/append
 	li = r.RaftLog.append(entries...)
-	r.Prs.Progress[r.id].MaybeUpdate(li)
-	// Regardless of maybeCommit's return, our caller will call bcastAppend.
-	r.maybeCommit()
+	if r.Prs.Progress[r.id].MaybeUpdate(li) {
+		// Regardless of maybeCommit's return, our caller will call bcastAppend.
+		r.maybeCommit()
+	}
 	return true
 }
 
