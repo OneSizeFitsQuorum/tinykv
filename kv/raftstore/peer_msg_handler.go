@@ -10,6 +10,7 @@ import (
 	"github.com/pingcap-incubator/tinykv/kv/raftstore/snap"
 	"github.com/pingcap-incubator/tinykv/kv/raftstore/util"
 	"github.com/pingcap-incubator/tinykv/log"
+	"github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/metapb"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/raft_cmdpb"
 	rspb "github.com/pingcap-incubator/tinykv/proto/pkg/raft_serverpb"
@@ -42,13 +43,52 @@ func (d *peerMsgHandler) HandleRaftReady() {
 	if d.stopped {
 		return
 	}
+
+	if d.peer.RaftGroup.HasReady() {
+		rd := d.peer.RaftGroup.Ready()
+		d.peer.peerStorage.SaveReadyState(&rd)
+		d.peer.Send(d.ctx.trans, rd.Messages)
+		//   if !raft.IsEmptySnap(rd.Snapshot) {
+		// 	processSnapshot(rd.Snapshot)
+		//   }
+		for _, entry := range rd.CommittedEntries {
+			//process(entry)
+			if entry.EntryType == eraftpb.EntryType_EntryNormal {
+				resp := d.peer.process(entry)
+
+				for i, proposal := range d.peer.proposals {
+					if proposal.index == entry.Index && proposal.term == entry.Term {
+						txn := d.peer.peerStorage.Engines.Kv.NewTransaction(false)
+						proposal.cb.Txn = txn
+						proposal.cb.Done(resp)
+						d.peer.proposals = append(d.peer.proposals[:i], d.peer.proposals[i+1:]...)
+						break
+					}
+				}
+			} else if entry.EntryType == eraftpb.EntryType_EntryConfChange {
+				var cc eraftpb.ConfChange
+				cc.Unmarshal(entry.Data)
+				d.peer.RaftGroup.ApplyConfChange(cc)
+			}
+		}
+
+		if len(rd.CommittedEntries) > 0 {
+			d.peer.updateApplyState(rd.CommittedEntries)
+		}
+
+		d.peer.RaftGroup.Advance(rd)
+	}
 	// Your Code Here (2B).
 }
 
 func (d *peerMsgHandler) HandleMsg(msg message.Msg) {
+	//fmt.Printf("handleMsg() msg:%v\n", msg)
 	switch msg.Type {
 	case message.MsgTypeRaftMessage:
 		raftMsg := msg.Data.(*rspb.RaftMessage)
+		if raftMsg.GetMessage().MsgType == eraftpb.MessageType_MsgAppend || raftMsg.GetMessage().MsgType == eraftpb.MessageType_MsgAppendResponse {
+			//fmt.Printf("handleMsg() MsgTypeRaftMessage, msg:%v\n", msg)
+		}
 		if err := d.onRaftMsg(raftMsg); err != nil {
 			log.Errorf("%s handle raft message error %v", d.Tag, err)
 		}
@@ -114,6 +154,14 @@ func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *
 		return
 	}
 	// Your Code Here (2B).
+	data, _ := msg.Marshal()
+	proposal := &proposal{
+		index: d.peer.nextProposalIndex(),
+		term:  d.peer.Term(),
+		cb:    cb,
+	}
+	d.peer.proposals = append(d.peer.proposals, proposal)
+	d.peer.RaftGroup.Propose(data)
 }
 
 func (d *peerMsgHandler) onTick() {

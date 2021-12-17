@@ -184,11 +184,13 @@ func (m *MockSchedulerClient) GetStore(ctx context.Context, storeID uint64) (*me
 
 func (m *MockSchedulerClient) GetRegion(ctx context.Context, key []byte) (*metapb.Region, *metapb.Peer, error) {
 	if err := m.checkBootstrap(); err != nil {
+		//fmt.Printf("GetRegion() err:%v\n", err)
 		return nil, nil, err
 	}
 	m.RLock()
 	defer m.RUnlock()
 	region, leader := m.getRegionLocked(key)
+	//fmt.Printf("GetRegion() region:%v, leader:%v\n", region, leader)
 	return region, leader, nil
 }
 

@@ -198,7 +198,7 @@ func newRaft(c *Config) *Raft {
 	}
 
 	raftLog := newLog(c.Storage)
-	hardState, _, err := c.Storage.InitialState()
+	hardState, confState, err := c.Storage.InitialState()
 	if err != nil {
 		panic(err)
 	}
@@ -211,11 +211,13 @@ func newRaft(c *Config) *Raft {
 		logger:           c.Logger,
 	}
 
-	for _, id := range c.peers {
+	for _, id := range confState.Nodes {
 		r.Prs.Progress[id] = &Progress{
 			Next: raftLog.LastIndex(),
 		}
 	}
+
+	//r.logger.Infof("newRaft(), len(r.Prs.Progress):%v, len(c.peers):%v", len(r.Prs.Progress), len(c.peers))
 	if !IsEmptyHardState(hardState) {
 		r.loadState(hardState)
 	}
@@ -333,6 +335,7 @@ func (r *Raft) becomeCandidate() {
 
 // becomeLeader transform this peer's state to leader
 func (r *Raft) becomeLeader() {
+	fmt.Printf("becomeLeader(), r:%v become leader\n", r.id)
 	r.reset(r.Term)
 	r.Lead = r.id
 	r.State = StateLeader
@@ -539,6 +542,8 @@ func (r *Raft) send(m pb.Message) {
 			m.Term = r.Term
 		}
 	}
+
+	//fmt.Printf("raft send(), msg:%v\n", m)
 	r.msgs = append(r.msgs, m)
 }
 
@@ -675,13 +680,17 @@ func (r *Raft) hup() {
 	if res := r.poll(r.id, true); res == VoteWon {
 		// We won the election after voting for ourselves (which must mean that
 		// this is a single-node cluster). Advance to the next state.
+		r.logger.Infof("%x single-node cluster. become leader", r.id)
+
 		r.becomeLeader()
 		return
 	}
+	//r.logger.Infof("%x len(r.Prs.Process)", len(r.Prs.Progress))
 	for id := range r.Prs.Progress {
 		if id == r.id {
 			continue
 		}
+
 		r.logger.Infof("%x [logterm: %d, index: %d] sent MessageType_MsgRequestVote request to %x at term %d",
 			r.id, r.RaftLog.lastTerm(), r.RaftLog.LastIndex(), id, r.Term)
 		r.send(pb.Message{Term: r.Term, To: id, MsgType: pb.MessageType_MsgRequestVote, Index: r.RaftLog.LastIndex(), LogTerm: r.RaftLog.lastTerm()})

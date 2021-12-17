@@ -14,6 +14,7 @@ import (
 	"github.com/pingcap-incubator/tinykv/log"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/metapb"
+	"github.com/pingcap-incubator/tinykv/proto/pkg/raft_cmdpb"
 	rspb "github.com/pingcap-incubator/tinykv/proto/pkg/raft_serverpb"
 	"github.com/pingcap-incubator/tinykv/raft"
 	"github.com/pingcap/errors"
@@ -38,7 +39,7 @@ func createPeer(storeID uint64, cfg *config.Config, sched chan<- worker.Task,
 	if metaPeer == nil {
 		return nil, errors.Errorf("find no peer for store %d in region %v", storeID, region)
 	}
-	log.Infof("region %v create peer with ID %d", region, metaPeer.Id)
+	//log.Infof("region %v create peer with ID %d", region, metaPeer.Id)
 	return NewPeer(storeID, cfg, engines, region, sched, metaPeer)
 }
 
@@ -389,4 +390,79 @@ func (p *peer) sendRaftMessage(msg eraftpb.Message, trans Transport) error {
 	}
 	sendMsg.Message = &msg
 	return trans.Send(sendMsg)
+}
+
+func (p *peer) process(entry eraftpb.Entry) *raft_cmdpb.RaftCmdResponse {
+	request := new(raft_cmdpb.RaftCmdRequest)
+	err := request.Unmarshal(entry.Data)
+	if err != nil {
+		fmt.Errorf("process err:%v\n", err)
+	}
+
+	reqs := request.GetRequests()
+	raftCmdResponse := newCmdResp()
+	raftCmdResponse.Header.CurrentTerm = p.Term()
+	raftCmdResponse.Responses = []*raft_cmdpb.Response{}
+
+	for _, req := range reqs {
+		switch req.GetCmdType() {
+		case raft_cmdpb.CmdType_Get:
+			get := req.GetGet()
+			val, err := engine_util.GetCF(p.peerStorage.Engines.Kv, get.GetCf(), get.GetKey())
+			if err != nil {
+				fmt.Errorf("process err:%v\n", err)
+			}
+			getResp := &raft_cmdpb.GetResponse{Value: val}
+			raftCmdResponse.Responses = append(raftCmdResponse.Responses, &raft_cmdpb.Response{
+				CmdType: raft_cmdpb.CmdType_Get,
+				Get:     getResp,
+			})
+		case raft_cmdpb.CmdType_Put:
+			putReq := req.GetPut()
+			err := engine_util.PutCF(p.peerStorage.Engines.Kv, putReq.GetCf(), putReq.GetKey(), putReq.GetValue())
+			if err != nil {
+				fmt.Errorf("process err:%v\n", err)
+			}
+
+			putResp := &raft_cmdpb.PutResponse{}
+			raftCmdResponse.Responses = append(raftCmdResponse.Responses, &raft_cmdpb.Response{
+				CmdType: raft_cmdpb.CmdType_Put,
+				Put:     putResp,
+			})
+		case raft_cmdpb.CmdType_Delete:
+			putReq := req.GetDelete()
+			err := engine_util.DeleteCF(p.peerStorage.Engines.Kv, putReq.GetCf(), putReq.GetKey())
+			if err != nil {
+				fmt.Errorf("process err:%v\n", err)
+			}
+
+			deleteResp := &raft_cmdpb.DeleteResponse{}
+			raftCmdResponse.Responses = append(raftCmdResponse.Responses, &raft_cmdpb.Response{
+				CmdType: raft_cmdpb.CmdType_Delete,
+				Delete:  deleteResp,
+			})
+		case raft_cmdpb.CmdType_Snap:
+			snapResp := &raft_cmdpb.SnapResponse{Region: p.Region()}
+			raftCmdResponse.Responses = append(raftCmdResponse.Responses, &raft_cmdpb.Response{
+				CmdType: raft_cmdpb.CmdType_Snap,
+				Snap:    snapResp,
+			})
+		}
+	}
+
+	return raftCmdResponse
+}
+
+func (p *peer) updateApplyState(commitEntries []eraftpb.Entry) {
+	ents := commitEntries
+	applyState := p.peerStorage.applyState
+	// applyState.TruncatedState = &rspb.RaftTruncatedState{
+	// 	Index: ents[0].Index,
+	// 	Term:  ents[0].Term,
+	// }
+	applyState.AppliedIndex = ents[len(ents)-1].Index
+
+	kvWB := new(engine_util.WriteBatch)
+	kvWB.SetMeta(meta.ApplyStateKey(p.peerStorage.region.GetId()), applyState)
+	p.peerStorage.Engines.WriteKV(kvWB)
 }

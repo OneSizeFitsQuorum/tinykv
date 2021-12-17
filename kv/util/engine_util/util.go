@@ -1,6 +1,7 @@
 package engine_util
 
 import (
+	
 	"bytes"
 
 	"github.com/Connor1996/badger"
@@ -38,6 +39,7 @@ func GetMeta(engine *badger.DB, key []byte, msg proto.Message) error {
 	var val []byte
 	err := engine.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(key)
+		//fmt.Printf("GetMeta(), err:%v",err)
 		if err != nil {
 			return err
 		}

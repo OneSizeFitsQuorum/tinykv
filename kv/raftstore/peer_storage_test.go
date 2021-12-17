@@ -37,6 +37,7 @@ func newTestPeerStorageFromEnts(t *testing.T, ents []eraftpb.Entry) *PeerStorage
 	peerStore := NewPeerStorageFromZero(t)
 	kvWB := new(engine_util.WriteBatch)
 	raftWB := new(engine_util.WriteBatch)
+	//fmt.Printf("newTestPeerStorageFromEnts(), ents:%v\n", ents[1:])
 	require.Nil(t, peerStore.Append(ents[1:], raftWB))
 	applyState := peerStore.applyState
 	applyState.TruncatedState = &rspb.RaftTruncatedState{

@@ -190,12 +190,12 @@ func (n *Node) BootstrapCluster(ctx context.Context, engines *engine_util.Engine
 }
 
 func (n *Node) startNode(engines *engine_util.Engines, trans Transport, snapMgr *snap.SnapManager) error {
-	log.Infof("start raft store node, storeID: %d", n.store.GetId())
+	//log.Infof("start raft store node, storeID: %d", n.store.GetId())
 	return n.system.start(n.store, n.cfg, engines, trans, n.schedulerClient, snapMgr)
 }
 
 func (n *Node) stopNode(storeID uint64) {
-	log.Infof("stop raft store thread, storeID: %d", storeID)
+	//log.Infof("stop raft store thread, storeID: %d", storeID)
 	n.system.shutDown()
 }
 

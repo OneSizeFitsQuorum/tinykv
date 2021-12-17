@@ -272,7 +272,7 @@ func (c *Cluster) GetRegion(key []byte) *metapb.Region {
 		// retry to get the region again.
 		SleepMS(20)
 	}
-	panic(fmt.Sprintf("find no region for %s", hex.EncodeToString(key)))
+	panic(fmt.Sprintf("find no region for %s, key:%v", hex.EncodeToString(key), key))
 }
 
 func (c *Cluster) GetRandomRegion() *metapb.Region {
@@ -364,6 +364,7 @@ func (c *Cluster) Scan(start, end []byte) [][]byte {
 			panic(resp.Header.Error)
 		}
 		if len(resp.Responses) != 1 {
+			fmt.Printf("Scan(), len(resp.Responses):%v\n", len(resp.Responses))
 			panic("len(resp.Responses) != 1")
 		}
 		if resp.Responses[0].CmdType != raft_cmdpb.CmdType_Snap {

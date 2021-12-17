@@ -75,6 +75,7 @@ func newReady(r *Raft, prevSoftSt *SoftState, prevHardSt pb.HardState) Ready {
 	if softSt := r.softState(); !isSoftStateEqual(softSt, prevSoftSt) {
 		rd.SoftState = softSt
 	}
+	//hardState为空的原因是hardState没有变
 	if hardSt := r.hardState(); !isHardStateEqual(hardSt, prevHardSt) {
 		rd.HardState = hardSt
 	}
@@ -106,6 +107,7 @@ type RawNode struct {
 
 // NewRawNode returns a new RawNode given configuration and a list of raft peers.
 func NewRawNode(config *Config) (*RawNode, error) {
+	//fmt.Printf("NewRawNode(), len(c.peers):%v\n", len(config.peers))
 	r := newRaft(config)
 	rn := &RawNode{
 		Raft: r,
@@ -203,6 +205,7 @@ func (rn *RawNode) acceptReady(rd Ready) {
 // HasReady called when RawNode user need to check if any Ready pending.
 func (rn *RawNode) HasReady() bool {
 	r := rn.Raft
+
 	if softSt := r.softState(); !isSoftStateEqual(softSt, rn.prevSoftSt) {
 		return true
 	}

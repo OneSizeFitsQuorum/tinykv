@@ -41,7 +41,7 @@ type Logger interface {
 }
 
 var (
-	defaultLogger = &DefaultLogger{Logger: log.New(os.Stderr, "raft", log.LstdFlags)}
+	defaultLogger = &DefaultLogger{Logger: log.New(os.Stderr, "raft", log.LstdFlags), debug: false}
 	raftLogger    = Logger(defaultLogger)
 )
 
@@ -60,7 +60,7 @@ func (l *DefaultLogger) EnableTimestamps() {
 }
 
 func (l *DefaultLogger) EnableDebug() {
-	l.debug = true
+	l.debug = false
 }
 
 func (l *DefaultLogger) Debug(v ...interface{}) {
@@ -80,7 +80,9 @@ func (l *DefaultLogger) Info(v ...interface{}) {
 }
 
 func (l *DefaultLogger) Infof(format string, v ...interface{}) {
-	l.Output(calldepth, header("INFO", fmt.Sprintf(format, v...)))
+	if l.debug {
+		l.Output(calldepth, header("INFO", fmt.Sprintf(format, v...)))
+	}
 }
 
 func (l *DefaultLogger) Error(v ...interface{}) {
