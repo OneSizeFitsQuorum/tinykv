@@ -138,6 +138,10 @@ type Progress struct {
 	Match, Next uint64
 }
 
+func (p *Progress) String() string {
+	return fmt.Sprintf("{MatchIndex:%d,NextIndex:%d}", p.Match, p.Next)
+}
+
 type Raft struct {
 	id uint64
 
@@ -198,7 +202,7 @@ func newRaft(c *Config) *Raft {
 	}
 
 	raftLog := newLog(c.Storage)
-	hardState, _, err := c.Storage.InitialState()
+	hardState, confState, err := c.Storage.InitialState()
 	if err != nil {
 		panic(err)
 	}
@@ -211,7 +215,7 @@ func newRaft(c *Config) *Raft {
 		logger:           c.Logger,
 	}
 
-	for _, id := range c.peers {
+	for _, id := range confState.Nodes {
 		r.Prs.Progress[id] = &Progress{
 			Next: raftLog.LastIndex(),
 		}
@@ -322,6 +326,8 @@ func (r *Raft) becomeFollower(term uint64, lead uint64) {
 	r.reset(term)
 	r.Lead = lead
 	r.State = StateFollower
+	r.logger.Infof("%x become follower at term %d with Lead=%d，lastTerm=%d, lastIndex=%d, commitIndex=%d, applyIndex=%d",
+		r.id, r.Term, r.Lead, r.RaftLog.lastTerm(), r.RaftLog.LastIndex(), r.RaftLog.committed, r.RaftLog.applied)
 }
 
 // becomeCandidate transform this peer's state to candidate
@@ -329,6 +335,8 @@ func (r *Raft) becomeCandidate() {
 	r.reset(r.Term + 1)
 	r.Vote = r.id
 	r.State = StateCandidate
+	r.logger.Infof("%x become candidate at term %d with lastTerm=%d, lastIndex=%d, commitIndex=%d, applyIndex=%d",
+		r.id, r.Term, r.RaftLog.lastTerm(), r.RaftLog.LastIndex(), r.RaftLog.committed, r.RaftLog.applied)
 }
 
 // becomeLeader transform this peer's state to leader
@@ -336,8 +344,13 @@ func (r *Raft) becomeLeader() {
 	r.reset(r.Term)
 	r.Lead = r.id
 	r.State = StateLeader
+	r.logger.Infof("%x become leader at term %d with lastTerm=%d, lastIndex=%d, commitIndex=%d, applyIndex=%d",
+		r.id, r.Term, r.RaftLog.lastTerm(), r.RaftLog.LastIndex(), r.RaftLog.committed, r.RaftLog.applied)
 	emptyEnt := pb.Entry{Data: nil}
-	if !r.appendEntry([]*pb.Entry{&emptyEnt}...) {
+	if r.appendEntry([]*pb.Entry{&emptyEnt}...) {
+		r.logger.Infof("%x append a empty entry at term %d with index=%d",
+			r.id, r.Term, r.RaftLog.LastIndex())
+	} else {
 		// This won't happen because we just called reset() above.
 		r.logger.Panic("empty entry was dropped")
 	}
