@@ -215,11 +215,22 @@ func newRaft(c *Config) *Raft {
 		logger:           c.Logger,
 	}
 
-	for _, id := range confState.Nodes {
-		r.Prs.Progress[id] = &Progress{
-			Next: raftLog.LastIndex(),
+	if len(c.peers) != 0 {
+		// lab2a
+		for _, id := range c.peers {
+			r.Prs.Progress[id] = &Progress{
+				Next: raftLog.LastIndex(),
+			}
+		}
+	} else {
+		// lab2b
+		for _, id := range confState.Nodes {
+			r.Prs.Progress[id] = &Progress{
+				Next: raftLog.LastIndex(),
+			}
 		}
 	}
+
 	if !IsEmptyHardState(hardState) {
 		r.loadState(hardState)
 	}
