@@ -6,9 +6,11 @@ import (
 
 	"github.com/Connor1996/badger/y"
 	"github.com/pingcap-incubator/tinykv/kv/raftstore/message"
+	"github.com/pingcap-incubator/tinykv/kv/raftstore/meta"
 	"github.com/pingcap-incubator/tinykv/kv/raftstore/runner"
 	"github.com/pingcap-incubator/tinykv/kv/raftstore/snap"
 	"github.com/pingcap-incubator/tinykv/kv/raftstore/util"
+	"github.com/pingcap-incubator/tinykv/kv/util/engine_util"
 	"github.com/pingcap-incubator/tinykv/log"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/eraftpb"
 	"github.com/pingcap-incubator/tinykv/proto/pkg/metapb"
@@ -48,19 +50,18 @@ func (d *peerMsgHandler) HandleRaftReady() {
 		rd := d.peer.RaftGroup.Ready()
 		d.peer.peerStorage.SaveReadyState(&rd)
 		d.peer.Send(d.ctx.trans, rd.Messages)
-		//   if !raft.IsEmptySnap(rd.Snapshot) {
-		// 	processSnapshot(rd.Snapshot)
-		//   }
+
 		for _, entry := range rd.CommittedEntries {
-			//process(entry)
 			if entry.EntryType == eraftpb.EntryType_EntryNormal {
-				resp := d.peer.process(entry)
+				resp := d.process(entry)
 
 				for i, proposal := range d.peer.proposals {
 					if proposal.index == entry.Index && proposal.term == entry.Term {
-						txn := d.peer.peerStorage.Engines.Kv.NewTransaction(false)
-						proposal.cb.Txn = txn
-						proposal.cb.Done(resp)
+						if proposal.cb != nil {
+							txn := d.peer.peerStorage.Engines.Kv.NewTransaction(false)
+							proposal.cb.Txn = txn
+							proposal.cb.Done(resp)
+						}
 						d.peer.proposals = append(d.peer.proposals[:i], d.peer.proposals[i+1:]...)
 						break
 					}
@@ -73,7 +74,7 @@ func (d *peerMsgHandler) HandleRaftReady() {
 		}
 
 		if len(rd.CommittedEntries) > 0 {
-			d.peer.updateApplyState(rd.CommittedEntries)
+			d.updateApplyState(rd.CommittedEntries)
 		}
 
 		d.peer.RaftGroup.Advance(rd)
@@ -153,6 +154,12 @@ func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *
 		cb.Done(ErrResp(err))
 		return
 	}
+
+	if !d.IsLeader() {
+		err := util.GetNotLeaderError(d.PeerId(), d.getPeerFromCache(d.LeaderId()))
+		cb.Done(ErrResp(err))
+		return
+	}
 	// Your Code Here (2B).
 	data, _ := msg.Marshal()
 	proposal := &proposal{
@@ -204,6 +211,7 @@ func (d *peerMsgHandler) ScheduleCompactLog(truncatedIndex uint64) {
 		RegionID:   d.regionId,
 		StartIdx:   d.LastCompactedIdx,
 		EndIdx:     truncatedIndex + 1,
+		Tag:        d.Tag,
 	}
 	d.LastCompactedIdx = raftLogGCTask.EndIdx
 	d.ctx.raftLogGCTaskSender <- raftLogGCTask
@@ -618,4 +626,103 @@ func newCompactLogRequest(regionID uint64, peer *metapb.Peer, compactIndex, comp
 		},
 	}
 	return req
+}
+
+func (d *peerMsgHandler) process(entry eraftpb.Entry) *raft_cmdpb.RaftCmdResponse {
+	request := new(raft_cmdpb.RaftCmdRequest)
+
+	err := request.Unmarshal(entry.Data)
+	if err != nil {
+		log.Panicf("process err:%v\n", err)
+	}
+
+	raftCmdResponse := newCmdResp()
+	raftCmdResponse.Header.CurrentTerm = d.Term()
+	raftCmdResponse.Responses = []*raft_cmdpb.Response{}
+
+	adminRequest := request.GetAdminRequest()
+	if adminRequest != nil {
+		d.processAdminRequest(adminRequest, raftCmdResponse)
+	} else {
+		reqs := request.GetRequests()
+		d.processBasicRequest(reqs, raftCmdResponse)
+	}
+
+	return raftCmdResponse
+}
+
+func (d *peerMsgHandler) updateApplyState(commitEntries []eraftpb.Entry) {
+	ents := commitEntries
+	applyState := d.peer.peerStorage.applyState
+	// applyState.TruncatedState = &rspb.RaftTruncatedState{
+	// 	Index: ents[0].Index,
+	// 	Term:  ents[0].Term,
+	// }
+	applyState.AppliedIndex = ents[len(ents)-1].Index
+
+	kvWB := new(engine_util.WriteBatch)
+	kvWB.SetMeta(meta.ApplyStateKey(d.peer.peerStorage.region.GetId()), applyState)
+	d.peer.peerStorage.Engines.WriteKV(kvWB)
+}
+
+func (d *peerMsgHandler) processBasicRequest(reqs []*raft_cmdpb.Request, raftCmdResponse *raft_cmdpb.RaftCmdResponse) {
+	for _, req := range reqs {
+		switch req.GetCmdType() {
+		case raft_cmdpb.CmdType_Get:
+			get := req.GetGet()
+			val, err := engine_util.GetCF(d.peer.peerStorage.Engines.Kv, get.GetCf(), get.GetKey())
+			if err != nil {
+				log.Panicf("process err:%v\n", err)
+			}
+			getResp := &raft_cmdpb.GetResponse{Value: val}
+			raftCmdResponse.Responses = append(raftCmdResponse.Responses, &raft_cmdpb.Response{
+				CmdType: raft_cmdpb.CmdType_Get,
+				Get:     getResp,
+			})
+		case raft_cmdpb.CmdType_Put:
+			putReq := req.GetPut()
+			err := engine_util.PutCF(d.peer.peerStorage.Engines.Kv, putReq.GetCf(), putReq.GetKey(), putReq.GetValue())
+			if err != nil {
+				log.Panicf("process err:%v\n", err)
+			}
+
+			putResp := &raft_cmdpb.PutResponse{}
+			raftCmdResponse.Responses = append(raftCmdResponse.Responses, &raft_cmdpb.Response{
+				CmdType: raft_cmdpb.CmdType_Put,
+				Put:     putResp,
+			})
+		case raft_cmdpb.CmdType_Delete:
+			putReq := req.GetDelete()
+			err := engine_util.DeleteCF(d.peer.peerStorage.Engines.Kv, putReq.GetCf(), putReq.GetKey())
+			if err != nil {
+				log.Panicf("process err:%v\n", err)
+			}
+
+			deleteResp := &raft_cmdpb.DeleteResponse{}
+			raftCmdResponse.Responses = append(raftCmdResponse.Responses, &raft_cmdpb.Response{
+				CmdType: raft_cmdpb.CmdType_Delete,
+				Delete:  deleteResp,
+			})
+		case raft_cmdpb.CmdType_Snap:
+			snapResp := &raft_cmdpb.SnapResponse{Region: d.Region()}
+			raftCmdResponse.Responses = append(raftCmdResponse.Responses, &raft_cmdpb.Response{
+				CmdType: raft_cmdpb.CmdType_Snap,
+				Snap:    snapResp,
+			})
+		}
+	}
+}
+
+func (d *peerMsgHandler) processAdminRequest(adminRequest *raft_cmdpb.AdminRequest, raftCmdResponse *raft_cmdpb.RaftCmdResponse) {
+	switch adminRequest.CmdType {
+	case raft_cmdpb.AdminCmdType_CompactLog:
+		compactLogRequest := adminRequest.GetCompactLog()
+		if d.peer.peerStorage.applyState.TruncatedState.Index >= compactLogRequest.CompactIndex {
+			return
+		}
+		d.peer.peerStorage.applyState.TruncatedState.Index = compactLogRequest.CompactIndex
+		d.peer.peerStorage.applyState.TruncatedState.Term = compactLogRequest.CompactTerm
+		log.Infof("processAdminRequest(),%s trucatedIndex:%v, trucatedTerm:%v", d.peer.peerStorage.Tag, compactLogRequest.CompactIndex, compactLogRequest.CompactTerm)
+		d.ScheduleCompactLog(compactLogRequest.CompactIndex)
+	}
 }

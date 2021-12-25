@@ -38,7 +38,7 @@ func newTestPeerStorageFromEnts(t *testing.T, ents []eraftpb.Entry) *PeerStorage
 	kvWB := new(engine_util.WriteBatch)
 	raftWB := new(engine_util.WriteBatch)
 	//fmt.Printf("newTestPeerStorageFromEnts(), ents:%v\n", ents[1:])
-	require.Nil(t, peerStore.Append(ents[1:], raftWB))
+	require.Nil(t, peerStore.Append(ents[1:], raftWB, 1))
 	applyState := peerStore.applyState
 	applyState.TruncatedState = &rspb.RaftTruncatedState{
 		Index: ents[0].Index,
@@ -93,7 +93,7 @@ func TestPeerStorageTerm(t *testing.T) {
 
 func appendEnts(t *testing.T, peerStore *PeerStorage, ents []eraftpb.Entry) {
 	raftWB := new(engine_util.WriteBatch)
-	require.Nil(t, peerStore.Append(ents, raftWB))
+	require.Nil(t, peerStore.Append(ents, raftWB, 1))
 	raftWB.SetMeta(meta.RaftStateKey(peerStore.region.GetId()), peerStore.raftState)
 	require.Nil(t, peerStore.Engines.WriteRaft(raftWB))
 }

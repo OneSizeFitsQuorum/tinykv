@@ -13,6 +13,7 @@ type RaftLogGCTask struct {
 	RegionID   uint64
 	StartIdx   uint64
 	EndIdx     uint64
+	Tag        string
 }
 
 type raftLogGcTaskRes uint64

@@ -183,7 +183,7 @@ func (bs *Raftstore) clearStaleMeta(kvWB, raftWB *engine_util.WriteBatch, origin
 		// it has been cleaned up.
 		return
 	}
-	err = ClearMeta(bs.ctx.engine, kvWB, raftWB, region.Id, raftState.LastIndex)
+	err = ClearMeta(bs.ctx.engine, kvWB, raftWB, region.Id, raftState.LastIndex, string(bs.storeState.id))
 	if err != nil {
 		panic(err)
 	}

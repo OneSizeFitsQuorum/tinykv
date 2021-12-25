@@ -17,6 +17,13 @@ func (e *ErrNotLeader) Error() string {
 	return fmt.Sprintf("region %v is not leader", e.RegionId)
 }
 
+func GetNotLeaderError(regionId uint64, leader *metapb.Peer) error {
+	return &ErrNotLeader{
+		RegionId: regionId,
+		Leader:   leader,
+	}
+}
+
 type ErrRegionNotFound struct {
 	RegionId uint64
 }

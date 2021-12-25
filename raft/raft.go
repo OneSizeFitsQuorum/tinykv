@@ -211,7 +211,15 @@ func newRaft(c *Config) *Raft {
 		logger:           c.Logger,
 	}
 
-	for _, id := range confState.Nodes {
+	var peers []uint64
+	switch c.Storage.(type) {
+	case *MemoryStorage:
+		peers = c.peers
+	default:
+		peers = confState.Nodes
+	}
+
+	for _, id := range peers {
 		r.Prs.Progress[id] = &Progress{
 			Next: raftLog.LastIndex(),
 		}
