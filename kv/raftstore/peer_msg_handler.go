@@ -106,22 +106,19 @@ func (d *peerMsgHandler) processNormalRequests(entry *eraftpb.Entry, requests []
 		case raft_cmdpb.CmdType_Get, raft_cmdpb.CmdType_Snap:
 		}
 	}
-	if len(d.proposals) == 0 {
-		kvWB.MustWriteToDB(d.peerStorage.Engines.Kv)
-	} else {
+	if len(d.proposals) > 0 {
 		p := d.proposals[0]
 		for p.index < entry.Index {
 			NotifyStaleReq(entry.Term, p.cb)
 			d.proposals = d.proposals[1:]
 			if len(d.proposals) == 0 {
-				kvWB.MustWriteToDB(d.peerStorage.Engines.Kv)
-				return
+				break
 			}
 			p = d.proposals[0]
 		}
 		if p.index == entry.Index {
+			d.proposals = d.proposals[1:]
 			if p.term != entry.Term {
-				kvWB.MustWriteToDB(d.peerStorage.Engines.Kv)
 				NotifyStaleReq(entry.Term, p.cb)
 			} else {
 				response := &raft_cmdpb.RaftCmdResponse{Header: &raft_cmdpb.RaftResponseHeader{CurrentTerm: d.Term()}, Responses: []*raft_cmdpb.Response{}}
@@ -146,15 +143,22 @@ func (d *peerMsgHandler) processNormalRequests(entry *eraftpb.Entry, requests []
 						p.cb.Txn = d.peerStorage.Engines.Kv.NewTransaction(false)
 					}
 				}
-				kvWB.MustWriteToDB(d.peerStorage.Engines.Kv)
-				p.cb.Done(response)
+				err := kvWB.WriteToDB(d.peerStorage.Engines.Kv)
+				// return response when server has executed the commands
+				if err != nil {
+					p.cb.Done(ErrResp(err))
+				} else {
+					p.cb.Done(response)
+				}
+				// avoid double write
+				return
 			}
-			d.proposals = d.proposals[1:]
-		} else {
-			kvWB.MustWriteToDB(d.peerStorage.Engines.Kv)
 		}
 	}
-
+	err := kvWB.WriteToDB(d.peerStorage.Engines.Kv)
+	if err != nil {
+		log.Errorf("%s executes entry %v failed with err %v", d.Tag, entry, err)
+	}
 }
 
 func (d *peerMsgHandler) processConfChangeEntry(entry *eraftpb.Entry, msg *eraftpb.ConfChange, kvWB *engine_util.WriteBatch) {
@@ -241,7 +245,6 @@ func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *
 	}
 	err = d.RaftGroup.Propose(data)
 	if err != nil {
-		fmt.Println("hehehe")
 		cb.Done(ErrResp(err))
 		return
 	}
