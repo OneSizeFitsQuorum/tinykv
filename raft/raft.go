@@ -579,7 +579,78 @@ func (r *Raft) handleHeartbeat(m pb.Message) {
 
 // handleSnapshot handle Snapshot RPC request
 func (r *Raft) handleSnapshot(m pb.Message) {
-	// Your Code Here (2C).
+	//Your Code Here (2C).
+
+	sindex, sterm := m.Snapshot.Metadata.Index, m.Snapshot.Metadata.Term
+	if r.restore(*m.Snapshot) {
+		r.logger.Infof("%x [commit: %d] restored snapshot [index: %d, term: %d]",
+			r.id, r.RaftLog.committed, sindex, sterm)
+		r.send(pb.Message{To: m.From, MsgType: pb.MessageType_MsgAppendResponse, Index: r.RaftLog.LastIndex()})
+	} else {
+		r.logger.Infof("%x [commit: %d] ignored snapshot [index: %d, term: %d]",
+			r.id, r.RaftLog.committed, sindex, sterm)
+		r.send(pb.Message{To: m.From, MsgType: pb.MessageType_MsgAppendResponse, Index: r.RaftLog.committed})
+	}
+}
+
+// restore recovers the state machine from a snapshot. It restores the log and the
+// configuration of state machine. If this method returns false, the snapshot was
+// ignored, either because it was obsolete or because of an error.
+func (r *Raft) restore(s pb.Snapshot) bool {
+	if s.Metadata.Index <= r.RaftLog.committed {
+		return false
+	}
+	if r.State != StateFollower {
+		// This is defense-in-depth: if the leader somehow ended up applying a
+		// snapshot, it could move into a new term without moving into a
+		// follower state. This should never fire, but if it did, we'd have
+		// prevented damage by returning early, so log only a loud warning.
+		//
+		// At the time of writing, the instance is guaranteed to be in follower
+		// state when this method is called.
+		r.logger.Warningf("%x attempted to restore snapshot as leader; should never happen", r.id)
+		r.becomeFollower(r.Term+1, None)
+		return false
+	}
+
+	cs := s.Metadata.ConfState
+
+	// Now go ahead and actually restore.
+	if r.RaftLog.matchTerm(s.Metadata.Index, s.Metadata.Term) {
+		r.logger.Infof("%x [commit: %d, lastindex: %d, lastterm: %d] fast-forwarded commit to snapshot [index: %d, term: %d]",
+			r.id, r.RaftLog.committed, r.RaftLog.LastIndex(), r.RaftLog.lastTerm(), s.Metadata.Index, s.Metadata.Term)
+		r.RaftLog.commitTo(s.Metadata.Index)
+		return false
+	}
+
+	r.RaftLog.restore(&s)
+
+	//Reset the configuration and add the (potentially updated) peers in anew.
+	//new node
+	prs := MakeProgressTracker()
+
+	for _, id := range cs.Nodes {
+		_, ok := r.Prs.Progress[id]
+		if !ok {
+			prs.Progress[id] = &Progress{
+				Next: r.RaftLog.LastIndex(),
+			}
+		} else {
+			prs.Progress[id] = &Progress{
+				Next:  r.Prs.Progress[id].Next,
+				Match: r.Prs.Progress[id].Match,
+			}
+		}
+	}
+
+	r.Prs = prs
+
+	pr := r.Prs.Progress[r.id]
+	pr.MaybeUpdate(pr.Next - 1) // TODO(tbg): this is untested and likely unneeded
+
+	r.logger.Infof("%x [commit: %d, lastindex: %d, lastterm: %d] restored snapshot [index: %d, term: %d]",
+		r.id, r.RaftLog.committed, r.RaftLog.LastIndex(), r.RaftLog.lastTerm(), s.Metadata.Index, s.Metadata.Term)
+	return true
 }
 
 // addNode add a new node to raft group
