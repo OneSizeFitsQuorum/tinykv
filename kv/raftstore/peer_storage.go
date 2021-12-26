@@ -306,7 +306,7 @@ func ClearMeta(engines *engine_util.Engines, kvWB, raftWB *engine_util.WriteBatc
 
 // Append the given entries to the raft log and update ps.raftState also delete log entries that will
 // never be committed
-func (ps *PeerStorage) Append(entries []eraftpb.Entry, raftWB *engine_util.WriteBatch, lead uint64) error {
+func (ps *PeerStorage) Append(entries []eraftpb.Entry, raftWB *engine_util.WriteBatch) error {
 	// Your Code Here (2B).
 	//fmt.Printf("Append(), lastIndex:%v, lastTerm:%v, len(entries):%v\n", ps.raftState.LastIndex, ps.raftState.LastTerm, len(entries))
 
@@ -325,7 +325,7 @@ func (ps *PeerStorage) Append(entries []eraftpb.Entry, raftWB *engine_util.Write
 }
 
 // Apply the peer with given snapshot
-func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_util.WriteBatch, raftWB *engine_util.WriteBatch, lead uint64) (*ApplySnapResult, error) {
+func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_util.WriteBatch, raftWB *engine_util.WriteBatch) (*ApplySnapResult, error) {
 	log.Infof("%v begin to apply snapshot", ps.Tag)
 	snapData := new(rspb.RaftSnapshotData)
 	if err := snapData.Unmarshal(snapshot.Data); err != nil {
@@ -401,7 +401,7 @@ func (ps *PeerStorage) SaveReadyState(ready *raft.Ready) (*ApplySnapResult, erro
 	kvWB := new(engine_util.WriteBatch)
 
 	if !raft.IsEmptySnap(&ready.Snapshot) {
-		applySnapResult, applySnapErr := ps.ApplySnapshot(&ready.Snapshot, kvWB, raftWB, ready.Lead)
+		applySnapResult, applySnapErr := ps.ApplySnapshot(&ready.Snapshot, kvWB, raftWB)
 		if applySnapErr != nil {
 			return applySnapResult, applySnapErr
 		}
@@ -409,18 +409,18 @@ func (ps *PeerStorage) SaveReadyState(ready *raft.Ready) (*ApplySnapResult, erro
 		raftWB.MustWriteToDB(ps.Engines.Raft)
 
 		kvWB.MustWriteToDB(ps.Engines.Kv)
-		log.Infof("SaveReadyState() applySnapshot writeToDB done, %s ,trucatedIndex:%v, trucatedTerm:%v,commit:%v, lastIndex:%v, , lead:%v\n", ps.Tag, ps.applyState.TruncatedState.Index, ps.applyState.TruncatedState.Term, ps.raftState.GetHardState().Commit, ps.raftState.LastIndex, ready.Lead)
+		//log.Infof("SaveReadyState() applySnapshot writeToDB done, %s ,trucatedIndex:%v, trucatedTerm:%v,commit:%v, lastIndex:%v, , lead:%v\n", ps.Tag, ps.applyState.TruncatedState.Index, ps.applyState.TruncatedState.Term, ps.raftState.GetHardState().Commit, ps.raftState.LastIndex, ready.Lead)
 		return applySnapResult, nil
 	} else {
 		if len(ready.Entries) > 0 {
-			ps.Append(ready.Entries, raftWB, ready.Lead)
+			ps.Append(ready.Entries, raftWB)
 		}
 
 		raftStateKey := meta.RaftStateKey(ps.region.Id)
 		if !raft.IsEmptyHardState(ready.HardState) {
 			ps.raftState.HardState = &ready.HardState
 		}
-		log.Infof("SaveReadyState() append writeToDB done, %s commit:%v, lastIndex:%v, len(commitEntries):%v, lead:%v", ps.Tag, ps.raftState.GetHardState().Commit, ps.raftState.LastIndex, len(ready.CommittedEntries), ready.Lead)
+		//log.Infof("SaveReadyState() append writeToDB done, %s commit:%v, lastIndex:%v, len(commitEntries):%v, lead:%v", ps.Tag, ps.raftState.GetHardState().Commit, ps.raftState.LastIndex, len(ready.CommittedEntries), ready.Lead)
 		if err := raftWB.SetMeta(raftStateKey, ps.raftState); err != nil {
 			return nil, err
 		}

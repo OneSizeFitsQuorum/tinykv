@@ -722,7 +722,7 @@ func (d *peerMsgHandler) processAdminRequest(adminRequest *raft_cmdpb.AdminReque
 		}
 		d.peer.peerStorage.applyState.TruncatedState.Index = compactLogRequest.CompactIndex
 		d.peer.peerStorage.applyState.TruncatedState.Term = compactLogRequest.CompactTerm
-		log.Infof("processAdminRequest(),%s trucatedIndex:%v, trucatedTerm:%v", d.peer.peerStorage.Tag, compactLogRequest.CompactIndex, compactLogRequest.CompactTerm)
+		//log.Infof("processAdminRequest(),%s trucatedIndex:%v, trucatedTerm:%v", d.peer.peerStorage.Tag, compactLogRequest.CompactIndex, compactLogRequest.CompactTerm)
 		d.ScheduleCompactLog(compactLogRequest.CompactIndex)
 	}
 }

@@ -77,7 +77,7 @@ func Info(v ...interface{}) {
 }
 
 func Infof(format string, v ...interface{}) {
-	_log.Infof(format, v...)
+	//_log.Infof(format, v...)
 }
 
 func Panic(v ...interface{}) {
