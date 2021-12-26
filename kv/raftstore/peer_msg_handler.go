@@ -93,7 +93,24 @@ func (d *peerMsgHandler) processNormalEntry(entry *eraftpb.Entry, msg *raft_cmdp
 }
 
 func (d *peerMsgHandler) processAdminRequest(entry *eraftpb.Entry, request *raft_cmdpb.AdminRequest, kvWB *engine_util.WriteBatch) {
-
+	defer func() {
+		err := kvWB.WriteToDB(d.peerStorage.Engines.Kv)
+		if err != nil {
+			log.Errorf("%s executes entry %v failed with err %v", d.Tag, entry, err)
+		}
+	}()
+	switch request.CmdType {
+	case raft_cmdpb.AdminCmdType_CompactLog:
+		compactLogRequest := request.GetCompactLog()
+		if d.peer.peerStorage.applyState.TruncatedState.Index >= compactLogRequest.CompactIndex {
+			return
+		}
+		d.peer.peerStorage.applyState.TruncatedState.Index = compactLogRequest.CompactIndex
+		d.peer.peerStorage.applyState.TruncatedState.Term = compactLogRequest.CompactTerm
+		kvWB.SetMeta(meta.ApplyStateKey(d.regionId), d.peer.peerStorage.applyState)
+		log.Infof("%s process CompactLogRequest{Index: %d, Term: %d}", d.Tag, compactLogRequest.CompactIndex, compactLogRequest.CompactTerm)
+		d.ScheduleCompactLog(compactLogRequest.CompactIndex)
+	}
 }
 
 func (d *peerMsgHandler) processNormalRequests(entry *eraftpb.Entry, requests []*raft_cmdpb.Request, kvWB *engine_util.WriteBatch) {
@@ -144,7 +161,7 @@ func (d *peerMsgHandler) processNormalRequests(entry *eraftpb.Entry, requests []
 					}
 				}
 				err := kvWB.WriteToDB(d.peerStorage.Engines.Kv)
-				// return response when server has executed the commands
+				// return response when server has executed these commands
 				if err != nil {
 					p.cb.Done(ErrResp(err))
 				} else {
@@ -248,7 +265,9 @@ func (d *peerMsgHandler) proposeRaftCommand(msg *raft_cmdpb.RaftCmdRequest, cb *
 		cb.Done(ErrResp(err))
 		return
 	}
-	d.proposals = append(d.proposals, proposal)
+	if cb != nil {
+		d.proposals = append(d.proposals, proposal)
+	}
 }
 
 func (d *peerMsgHandler) onTick() {

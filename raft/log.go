@@ -65,13 +65,6 @@ func newLog(storage Storage) *RaftLog {
 	return log
 }
 
-// We need to compact the log entries in some point of time like
-// storage compact stabled log entries prevent the log entries
-// grow unlimitedly in memory
-func (r *RaftLog) maybeCompact() {
-	// Your Code Here (2C).
-}
-
 func (r *RaftLog) String() string {
 	return fmt.Sprintf("committed=%d, applied=%d, unstable.offset=%d, len(unstable.Entries)=%d", r.committed, r.applied, r.unstable.offset, len(r.unstable.entries))
 }
