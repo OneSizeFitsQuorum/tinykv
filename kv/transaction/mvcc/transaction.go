@@ -76,24 +76,32 @@ func (txn *MvccTxn) DeleteLock(key []byte) {
 func (txn *MvccTxn) GetValue(key []byte) ([]byte, error) {
 	it := txn.Reader.IterCF(engine_util.CfWrite)
 	defer it.Close()
-	it.Seek(EncodeKey(key, txn.StartTS))
-	if !it.Valid() {
-		return nil, nil
+	for it.Seek(EncodeKey(key, txn.StartTS)); it.Valid(); it.Next() {
+		writeItem := it.Item()
+		writeKey := writeItem.KeyCopy(nil)
+		if !bytes.Equal(DecodeUserKey(writeKey), key) {
+			return nil, nil
+		}
+		writeValue, err := writeItem.ValueCopy(nil)
+		if err != nil {
+			return nil, err
+		}
+		write, err := ParseWrite(writeValue)
+		if err != nil {
+			return nil, err
+		}
+		switch write.Kind {
+		case WriteKindPut:
+			// access CFDefault to get correct value
+			return txn.Reader.GetCF(engine_util.CfDefault, EncodeKey(key, write.StartTS))
+		case WriteKindDelete:
+			// just return nil because there is no need to access CFDefault
+			return nil, nil
+		case WriteKindRollback:
+			// continue to search
+		}
 	}
-	writeItem := it.Item()
-	writeKey := writeItem.KeyCopy(nil)
-	if !bytes.Equal(DecodeUserKey(writeKey), key) {
-		return nil, nil
-	}
-	writeValue, err := writeItem.ValueCopy(nil)
-	if err != nil {
-		return nil, err
-	}
-	write, err := ParseWrite(writeValue)
-	if err != nil {
-		return nil, err
-	}
-	return txn.Reader.GetCF(engine_util.CfDefault, EncodeKey(key, write.StartTS))
+	return nil, nil
 }
 
 // PutValue adds a key/value write to this transaction.
