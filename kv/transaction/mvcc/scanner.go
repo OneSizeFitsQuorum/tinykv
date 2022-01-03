@@ -36,6 +36,7 @@ func (scan *Scanner) Next() ([]byte, []byte, error) {
 		userKey := DecodeUserKey(writeKey)
 		commitTs := decodeTimestamp(writeKey)
 
+		// can't read locked keys
 		lock, err := scan.txn.GetLock(userKey)
 		if err != nil {
 			return nil, nil, err
@@ -44,6 +45,7 @@ func (scan *Scanner) Next() ([]byte, []byte, error) {
 			return nil, nil, &KeyError{kvrpcpb.KeyError{Locked: lock.Info(userKey)}}
 		}
 
+		// can't read keys in the future
 		if commitTs >= scan.txn.StartTS {
 			scan.it.Seek(EncodeKey(userKey, commitTs-1))
 			continue
@@ -57,14 +59,25 @@ func (scan *Scanner) Next() ([]byte, []byte, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		if write.Kind != WriteKindPut {
+
+		// can't read deleted or rollback keys
+		switch write.Kind {
+		case WriteKindDelete:
+			// seek next key
 			scan.it.Seek(EncodeKey(userKey, 0))
 			continue
+		case WriteKindRollback:
+			// seek lower version for this key
+			scan.it.Seek(EncodeKey(userKey, commitTs-1))
+			continue
+		case WriteKindPut:
 		}
+
 		value, err := scan.txn.Reader.GetCF(engine_util.CfDefault, EncodeKey(userKey, write.StartTS))
 		if err != nil {
 			return nil, nil, err
 		}
+
 		it.Next()
 		return userKey, value, nil
 	}
