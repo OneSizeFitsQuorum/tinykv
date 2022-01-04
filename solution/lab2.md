@@ -28,7 +28,7 @@
 
 raft 模块 leader 选举流程如下：
 
-![](../imgs/solution/leader%20election.jpg)
+![](imgs/leader%20election.jpg)
 
 第一步，我们首先实现对 raft 的初始化。
 
@@ -78,7 +78,7 @@ Candidate 接收到此消息时，就会根据消息的 reject 属性来确定�
 
 日志复制的流程如下：
 
-![Log Replication](../imgs/solution/log%20replication.jpg)
+![Log Replication](imgs/log%20replication.jpg)
 
 本部分主要实现不同状态的 raft 对以下 Message 的处理：
 
@@ -164,11 +164,11 @@ proposeRaftCommand() 方法使得系统有能力将接收到的 client 请求通
 
 1. gc log 的流程：
 
-![gc raftLog](../imgs/solution/gc%20raftLog.png)
+![gc raftLog](imgs/gc%20raftLog.png)
 
 2. 发送和应用 snapshot 的流程：
 
-![send and apply snapshot](../imgs/solution/send%20and%20apply%20Snapshot.png)
+![send and apply snapshot](imgs/send%20and%20apply%20Snapshot.png)
 
 #### Implement in Raft
 
