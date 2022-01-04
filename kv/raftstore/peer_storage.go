@@ -368,6 +368,7 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 	ps.raftState.LastTerm = snapshot.Metadata.Term
 	ps.snapState.StateType = snap.SnapState_Applying
 
+	ps.region = snapData.Region
 	meta.WriteRegionState(kvWB, snapData.Region, rspb.PeerState_Normal)
 
 	notifier := make(chan bool, 1)
