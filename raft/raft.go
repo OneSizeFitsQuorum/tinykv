@@ -464,13 +464,11 @@ func (r *Raft) stepLeader(m pb.Message) error {
 		}
 
 		for i, entry := range m.Entries {
-
 			if entry.EntryType == pb.EntryType_EntryConfChange {
 				var cc pb.ConfChange
 				if err := cc.Unmarshal(entry.Data); err != nil {
 					panic(err)
 				}
-
 				if r.PendingConfIndex > r.RaftLog.applied {
 					r.logger.Infof("%x ignoring conf change %v", r.id, cc)
 					m.Entries[i] = &pb.Entry{EntryType: pb.EntryType_EntryNormal}
@@ -753,7 +751,6 @@ func (r *Raft) restore(s pb.Snapshot) bool {
 
 // addNode add a new node to raft group
 func (r *Raft) addNode(id uint64) {
-	// Your Code Here (3A).
 	_, ok := r.Prs.Progress[id]
 	if ok {
 		return
@@ -769,7 +766,6 @@ func (r *Raft) addNode(id uint64) {
 
 // removeNode remove a node from raft group
 func (r *Raft) removeNode(id uint64) {
-	// Your Code Here (3A).
 	_, ok := r.Prs.Progress[id]
 	if !ok {
 		return
@@ -923,18 +919,7 @@ func (r *Raft) advance(rd Ready) {
 	// new Commit index, this does not mean that we're also applying
 	// all of the new entries due to commit pagination by size.
 	if newApplied := rd.appliedCursor(); newApplied > 0 {
-		oldApplied := r.RaftLog.applied
-
 		r.RaftLog.appliedTo(newApplied)
-		if oldApplied <= r.PendingConfIndex && newApplied >= r.PendingConfIndex && r.State == StateLeader {
-			// If the current (and most recent, at least for this leader's term)
-			// configuration should be auto-left, initiate that now. We use a
-			// nil Data which unmarshals into an empty ConfChangeV2 and has the
-			// benefit that appendEntry can never refuse it based on its size
-			// (which registers as zero).
-			r.PendingConfIndex = r.RaftLog.LastIndex()
-			r.logger.Infof("initiating automatic transition out of joint configuration")
-		}
 	}
 
 	if len(rd.Entries) > 0 {
@@ -997,5 +982,5 @@ func (r *Raft) switchToConfig() {
 // which is true when its own id is in progress list.
 func (r *Raft) promotable() bool {
 	pr := r.Prs.Progress[r.id]
-	return pr != nil //&& !r.RaftLog.hasPendingSnapshot()
+	return pr != nil
 }
