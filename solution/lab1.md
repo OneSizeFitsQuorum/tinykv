@@ -1,17 +1,17 @@
 <!-- TOC -->
 
 - [解题思路](#解题思路)
-    - [Part 1 : Implement a standalone storage engine.](#part-1--implement-a-standalone-storage-engine)
+    - [Part 1 : Implement a standalone storage engine](#part-1--implement-a-standalone-storage-engine)
         - [1.Write 部分实现思路](#1write-部分实现思路)
         - [2.Reader 部分实现思路](#2reader-部分实现思路)
-    - [Part 2 : Implement raw key/value service handlers.](#part-2--implement-raw-keyvalue-service-handlers)
+    - [Part 2 : Implement raw key/value service handlers](#part-2--implement-raw-keyvalue-service-handlers)
 - [相关知识学习](#相关知识学习)
 
 <!-- /TOC -->
 
 ## 解题思路
 
-### Part 1 : Implement a standalone storage engine.
+### Part 1 : Implement a standalone storage engine
 
 本部分是对底层 badger api 的包装，主要涉及修改的代码文件是 standalone_storage.go, 需要实现 Storage 接口的 Write 和 Reader 方法，来实现对底层 badger 数据库的读写。
 
@@ -33,9 +33,9 @@ Reader 部分会涉及到 point read 和 scan read 两种不同读方式。
 针对 scan read，
 直接调用 cf_iterator.go 中的 NewCFIterator 函数，返回一个迭代器，供 part2 中调用。
 
-### Part 2 : Implement raw key/value service handlers.
+### Part 2 : Implement raw key/value service handlers
 
-本部分需要实现 RawGet/ RawScan/ RawPut/ RawDelete 四个 handlers，主要涉及修改的代码文件是 raw_api.go。
+本部分需要实现 RawGet/ RawScan/ RawPut/ RawDelete 四个 handlers，主要涉及修改的代码文件是 raw_api.go
 
 针对 RawGet，
 我们调用 storage 的 Reader 函数返回一个 Reader，然后调用其 GetCF 函数进行点读取即可，读取之后需要判断对应 key 是否存在。

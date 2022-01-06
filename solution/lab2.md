@@ -7,9 +7,9 @@
         - [Implement the raw node interface](#implement-the-raw-node-interface)
     - [lab2b](#lab2b)
         - [Implement peer storage](#implement-peer-storage)
-        - [Implement Raft ready process](#implement-raft-ready-process)
+        - [Implement raft ready process](#implement-raft-ready-process)
     - [lab2c](#lab2c)
-        - [Implement in Raft](#implement-in-raft)
+        - [Implement in raft](#implement-in-raft)
         - [Implement in raftstore](#implement-in-raftstore)
 - [相关知识学习](#相关知识学习)
     - [Raft](#raft)
@@ -24,7 +24,7 @@
 
 #### Leader election
 
-本部分是对 raft 模块 leader 选举功能的实现，涉及修改的代码文件主要涉及到 raft.go、log.go
+本部分是对 raft 模块 leader 选举功能的实现，主要涉及修改的代码文件是 raft.go、log.go
 
 raft 模块 leader 选举流程如下：
 
@@ -36,7 +36,7 @@ raft 模块 leader 选举流程如下：
 
 第二步，我们实现 Raft 对象的 tick() 函数
 
-上层应用会调用 tick() 函数，作为逻辑时钟控制 Raft 模块的选举功能和心跳功能。因此我们实现 tick() 函数，当 Raft 状态是 Follwer 时，检查自上次接收心跳之后，间隔时间是否超过了 election timeout，如果超过了，将发送 MessageType_MsgHup；当 Raft 状态时 Leader 时，检查自上次发送心跳之后，间隔时间是否超过了 heartbeat timeout，如果超过了，将发送 MessageType_MsgBeat。
+上层应用会调用 tick() 函数，作为逻辑时钟控制 Raft 模块的选举功能和心跳功能。因此我们实现 tick() 函数，当 Raft 状态是 Follower 时，检查自上次接收心跳之后，间隔时间是否超过了 election timeout，如果超过了，将发送 MessageType_MsgHup；当 Raft 状态时 Leader 时，检查自上次发送心跳之后，间隔时间是否超过了 heartbeat timeout，如果超过了，将发送 MessageType_MsgBeat。
 
 第三步，我们实现 raft.Raft.becomeXXX 等基本函数
 
@@ -74,7 +74,7 @@ Candidate 接收到此消息时，就会根据消息的 reject 属性来确定�
 
 #### Log replication
 
-本部分是对 raft 模块日志复制功能的实现，涉及修改的代码文件主要涉及到 raft.go、log.go
+本部分是对 raft 模块日志复制功能的实现，主要涉及修改的代码文件是 raft.go、log.go
 
 日志复制的流程如下：
 
@@ -143,7 +143,7 @@ peer storage 除了管理持久化 raft log 外，也会管理持久化其他元
 
 在处理完 raft log 后，我们还需要保存 Ready 中的 hardState，并在最后调用 WriteToDB() 方法保证之前的修改落盘。
 
-#### Implement Raft ready process
+#### Implement raft ready process
 
 本部分主要实现 peer_storage_handler.go 中的 proposeRaftCommand() 和 HandleRaftReady() 方法，涉及修改的代码文件为 peer_storage_handler.go
 
@@ -170,7 +170,7 @@ proposeRaftCommand() 方法使得系统有能力将接收到的 client 请求通
 
 ![send and apply snapshot](imgs/send%20and%20apply%20Snapshot.png)
 
-#### Implement in Raft
+#### Implement in raft
 
 当 leader 发现 follower 落后太多时，会主动向 follower 发送 snapshot，对其进行同步。在 Raft 模块内部，需要增加对 MessageType_MsgSnapshot 消息的处理，主要对以下两点进行处理：
 
@@ -234,11 +234,11 @@ for {
 
 * batching 优化：客户端发来的一条 command 可能包含多个读写请求，服务端可以将其打包成一条或多条 raft 日志。显然，打包成一条 Raft 日志的性能会更高，因为这样能够节省大量 IO 资源的消耗。当然这也需要在 apply 时对所有的 request 均做相应的业务和容错处理。
 
-* apply 时的 safety：要想实现基于 Raft 的 KV 服务，一大难点便是如何保证 applyIndex 和状态机数据的原子性。比如在 6.824 的框架中，Raft 层对于上层状态机的假设是易失的，即重启后状态机为空，那么 applyIndex 便可以不被持久化记录，因为一旦发生重启 Raft 实例可以从 0 开始重新 apply 日志，对于状态机来说这个过程保证不会重复。然而这样的实现虽然保证了 safety，但却不是一个生产可用的实现。对于 Tinykv，其状态机为非易失的 LSM 引擎，一旦要记录 applyIndex 就可能出现与状态机数据不一致的原子性问题，即重启后可能会存在日志被重复 apply 到状态机的现象。为了解决这一问题，我们将每个 Index 下 entry 的应用和对应 applyIndex 的更新放到了一个事务中来保证他们之间的原子性，巧妙地解决了该过程的 safety 问题。
+* apply 时的 safety：要想实现基于 Raft 的 KV 服务，一大难点便是如何保证 applyIndex 和状态机数据的原子性。比如在 6.824 的框架中，Raft 层对于上层状态机的假设是易失的，即重启后状态机为空，那么 applyIndex 便可以不被持久化记录，因为一旦发生重启 Raft 实例可以从 0 开始重新 apply 日志，对于状态机来说这个过程保证不会重复。然而这样的实现虽然保证了 safety，但却不是一个生产可用的实现。对于 tinykv，其状态机为非易失的 LSM 引擎，一旦要记录 applyIndex 就可能出现与状态机数据不一致的原子性问题，即重启后可能会存在日志被重复 apply 到状态机的现象。为了解决这一问题，我们将每个 Index 下 entry 的应用和对应 applyIndex 的更新放到了一个事务中来保证他们之间的原子性，巧妙地解决了该过程的 safety 问题。
 
 ### Snapshot
 
-Tinykv 的 Snapshot 几乎是一个纯异步的方案，在架构上有很多讲究，这里可以仔细阅读文档和一位社区同学分享的 [Snapshot 流程](https://asktug.com/t/topic/273859) 后再开始编码。
+tinykv 的 Snapshot 几乎是一个纯异步的方案，在架构上有很多讲究，这里可以仔细阅读文档和一位社区同学分享的 [Snapshot 流程](https://asktug.com/t/topic/273859) 后再开始编码。
 
 一旦了解了以下两个流程，代码便可以自然而然地写出来了。
 * log gc 流程

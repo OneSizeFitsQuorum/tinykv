@@ -14,7 +14,7 @@
 
 ### lab4a
 
-本部分是对 mvcc 模块的实现，涉及修改的代码文件主要涉及到 transaction.go。需要利用对 CFLock, CFDefault 和 CFWrite 三个 CF 的一些操作来实现 mvcc。
+本部分是对 mvcc 模块的实现，主要涉及修改的代码文件是 transaction.go。需要利用对 CFLock, CFDefault 和 CFWrite 三个 CF 的一些操作来实现 mvcc。
 
 针对 Lock 相关的函数：
 * PutLock：将 PUT <key, lock.ToBytes()> 添加到 Modify 即可。
@@ -36,7 +36,7 @@
 
 ### lab4b
 
-本部分是对 Percolator 算法 KVPreWrite, KVCommit 和 KVGet 三个方法的实现，涉及修改的代码文件主要涉及到 server.go, query.go 和 nonquery.go。
+本部分是对 Percolator 算法 KVPreWrite, KVCommit 和 KVGet 三个方法的实现，主要涉及修改的代码文件是 server.go, query.go 和 nonquery.go。
 
 * KVPreWrite：针对每个 key，首先检验是否存在写写冲突，再检查是否存在行锁，如存在则需要根据所属事务是否一致来决定是否返回 KeyError，最后将 key 添加到 CFDefault 和 CFLock 即可。
 * KVCommit：针对每个 key，首先检查是否存在行锁，如不存在则已经 commit 或 rollback，如存在则需要根据 CFWrite 中的当前事务状态来判断是否返回 KeyError，最后将 key 添加到 CFWrite 中并在 CFLock 中删除即可。
@@ -44,7 +44,7 @@
 
 ### lab4c
 
-本部分是对 Percolator 算法 KvCheckTxnStatus, KvBatchRollback, KvResolveLock 和 KvScan 四个方法的实现，涉及修改的代码文件主要涉及到 server.go, query.go 和 nonquery.go。
+本部分是对 Percolator 算法 KvCheckTxnStatus, KvBatchRollback, KvResolveLock 和 KvScan 四个方法的实现，主要涉及修改的代码文件是 server.go, query.go 和 nonquery.go。
 
 * KvCheckTxnStatus：检查 PrimaryLock 的行锁，如果存在且被当前事务锁定，则根据 ttl 时间判断是否过期从而做出相应的动作；否则锁很已被 rollback 或者 commit，从 CFWrite 中获取相关信息即可。
 * KvBatchRollback：针对每个 key，首先检查是否存在行锁，如果存在则删除 key 在 CFLock 和 CFValue 中的数并且在 CFWrite 中写入一条 rollback 即可。如果不存在或者不归当前事务锁定，则从 CFWrite 中获取当前事务的提交信息，如果不存在则向 CFWrite 写入一条 rollback，如果存在则根据是否为 rollback 判断是否返回错误。
