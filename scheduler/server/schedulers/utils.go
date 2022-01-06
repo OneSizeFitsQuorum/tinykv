@@ -14,6 +14,7 @@
 package schedulers
 
 import (
+	"github.com/pingcap-incubator/tinykv/scheduler/server/schedule/opt"
 	"time"
 
 	"github.com/pingcap-incubator/tinykv/scheduler/server/core"
@@ -50,4 +51,14 @@ func minDuration(a, b time.Duration) time.Duration {
 
 func isRegionUnhealthy(region *core.RegionInfo) bool {
 	return len(region.GetLearners()) != 0
+}
+
+func getHealthRegions(cluster opt.Cluster) []*core.StoreInfo {
+	var healthStores []*core.StoreInfo
+	for _, store := range cluster.GetStores() {
+		if store.IsUp() && time.Since(store.GetLastHeartbeatTS()) < cluster.GetMaxStoreDownTime() {
+			healthStores = append(healthStores, store)
+		}
+	}
+	return healthStores
 }

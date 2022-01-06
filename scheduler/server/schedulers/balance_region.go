@@ -18,6 +18,7 @@ import (
 	"github.com/pingcap-incubator/tinykv/scheduler/server/schedule"
 	"github.com/pingcap-incubator/tinykv/scheduler/server/schedule/operator"
 	"github.com/pingcap-incubator/tinykv/scheduler/server/schedule/opt"
+	"sort"
 )
 
 func init() {
@@ -76,7 +77,48 @@ func (s *balanceRegionScheduler) IsScheduleAllowed(cluster opt.Cluster) bool {
 }
 
 func (s *balanceRegionScheduler) Schedule(cluster opt.Cluster) *operator.Operator {
-	// Your Code Here (3C).
+	stores := getHealthRegions(cluster)
+	if len(stores) <= 1 {
+		return nil
+	}
 
+	sort.Slice(stores, func(i, j int) bool {
+		return stores[i].GetRegionSize() > stores[j].GetRegionSize()
+	})
+
+	var region *core.RegionInfo
+	for sourceIndex := 0; sourceIndex < len(stores); sourceIndex++ {
+		for i := 0; i < balanceRegionRetryLimit; i++ {
+			cluster.GetPendingRegionsWithLock(stores[sourceIndex].GetID(), func(container core.RegionsContainer) {
+				region = core.RandRegion(container)
+			})
+			if region == nil {
+				cluster.GetFollowersWithLock(stores[sourceIndex].GetID(), func(container core.RegionsContainer) {
+					region = core.RandRegion(container)
+				})
+			}
+			if region == nil {
+				cluster.GetLeadersWithLock(stores[sourceIndex].GetID(), func(container core.RegionsContainer) {
+					region = core.RandRegion(container)
+				})
+			}
+			if region != nil && len(region.GetMeta().GetPeers()) == cluster.GetMaxReplicas() {
+				storesIds := region.GetStoreIds()
+				for targetIndex := len(stores) - 1; targetIndex > sourceIndex; targetIndex-- {
+					if _, ok := storesIds[stores[targetIndex].GetID()]; !ok && stores[sourceIndex].GetRegionSize()-stores[targetIndex].GetRegionSize() > 2*region.GetApproximateSize() {
+						newPeer, err := cluster.AllocPeer(stores[targetIndex].GetID())
+						if err != nil {
+							return nil
+						}
+						op, err := operator.CreateMovePeerOperator("balance-region", cluster, region, operator.OpBalance, stores[sourceIndex].GetID(), stores[targetIndex].GetID(), newPeer.GetId())
+						if err != nil {
+							return nil
+						}
+						return op
+					}
+				}
+			}
+		}
+	}
 	return nil
 }

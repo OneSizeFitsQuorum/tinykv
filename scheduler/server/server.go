@@ -57,6 +57,10 @@ var (
 	ErrAddOperator = errors.New("failed to add operator, maybe already have one")
 	// ErrRegionNotAdjacent is error info for region not adjacent.
 	ErrRegionNotAdjacent = errors.New("two regions are not adjacent")
+	// ErrRegionEmptyEpoch is error info for region has empty epoch
+	ErrRegionEmptyEpoch = func(region *metapb.Region) error {
+		return errors.Errorf("region %v's epoch is empty", region)
+	}
 	// ErrRegionNotFound is error info for region not found.
 	ErrRegionNotFound = func(regionID uint64) error {
 		return errors.Errorf("region %v not found", regionID)

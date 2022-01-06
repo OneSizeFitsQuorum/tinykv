@@ -627,22 +627,22 @@ func (r *RegionsInfo) GetStoreLearnerCount(storeID uint64) int {
 
 // RandRegion get a region by random
 func (r *RegionsInfo) RandRegion(opts ...RegionOption) *RegionInfo {
-	return randRegion(r.tree, opts...)
+	return RandRegion(r.tree, opts...)
 }
 
 // RandPendingRegion randomly gets a store's region with a pending peer.
 func (r *RegionsInfo) RandPendingRegion(storeID uint64, opts ...RegionOption) *RegionInfo {
-	return randRegion(r.pendingPeers[storeID], opts...)
+	return RandRegion(r.pendingPeers[storeID], opts...)
 }
 
 // RandLeaderRegion randomly gets a store's leader region.
 func (r *RegionsInfo) RandLeaderRegion(storeID uint64, opts ...RegionOption) *RegionInfo {
-	return randRegion(r.leaders[storeID], opts...)
+	return RandRegion(r.leaders[storeID], opts...)
 }
 
 // RandFollowerRegion randomly gets a store's follower region.
 func (r *RegionsInfo) RandFollowerRegion(storeID uint64, opts ...RegionOption) *RegionInfo {
-	return randRegion(r.followers[storeID], opts...)
+	return RandRegion(r.followers[storeID], opts...)
 }
 
 // GetPendingRegionsWithLock return pending regions subtree by storeID
@@ -702,7 +702,7 @@ type RegionsContainer interface {
 	RandomRegion(startKey, endKey []byte) *RegionInfo
 }
 
-func randRegion(regions RegionsContainer, opts ...RegionOption) *RegionInfo {
+func RandRegion(regions RegionsContainer, opts ...RegionOption) *RegionInfo {
 	for i := 0; i < randomRegionMaxRetry; i++ {
 		region := regions.RandomRegion(nil, nil)
 		if region == nil {
