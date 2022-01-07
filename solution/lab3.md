@@ -29,6 +29,31 @@
 
 ### lab3b
 
+本部分主要是在 3a 的基础上，在 raft store 层面实现对 TransferLeader、ChangePeer 和 Split 三种 AdminRequest 的处理，涉及修改的文件主要是 peer_msg_handler.go 和 peer.go
+
+对于 TransferLeader，比较简单：
+
+TransferLeader request 因为不需要复制到 follower 节点，所以在 peer_msg_handler.go 的 pproposeRaftCommand() 方法中直接调用 raw_node.go 中的 TransferLeader() 方法即可
+
+对于 ConfChange，分 addNode 和 removeNode 两种行为处理。
+
+当 addNode 的命令 commit 之后，不需要我们手动调用 createPeer() 或者 maybeCreatePeer() 来显式创建 peer。我们只需要对 d.ctx 中的 storeMeta 进行修改即可，新 peer 会通过心跳机制进行创建。
+
+当 removeNode 的命令 commit 之后，与 addNode 命令不同的是，我们需要显式调用 destroyPeer() 函数来停止相应的 raft 模块。这时需要注意的一个点时，当 Region 中只剩下两个节点，要从这两个节点中移除一个时，如果有一个节点挂了，会使整个集群不可用，特别是要移除的节点是 leader 本身。
+
+在测试中会遇到这样的问题：当 Region 中只剩下节点 A（leader）和 节点 B（follower），当 removeNode A 的命令被 commit 之后，leader 就进行自我销毁，如果这个时候进入了 unreliable 的状态，那么 leader 就有可能无法在 destory 之前通过 heartbeat 去更新 follower 的 commitIndex。这样使得 follower B 不知道 leader A 已经被移除，就算发起选举也无法收到节点 A 的 vote，最终无法成功，导致 request timeout。
+
+对于 split, 需要注意：
+
+1. 因为 Region 会进行分裂，所以需要对 lab2b 进行修改，当接收到 delete/put/get/snap 等命令时，需要检查他们的 key 是否还在该 region 中，因为在 raftCmd 同步过程中，可能会发生 region 的 split，也需要检查 RegionEpoch 是否匹配。
+2. 在比较 splitKey 和当前 region 的 endKey 时，需要使用 engine_util.ExceedEndKey()，因为 key range 逻辑上是一个环。
+3. split 时也需要对 d.ctx 中的 storeMeta 中 region 相关信息进行更新。
+4. 需要显式调用 createPeer() 来创建新 Region 中的 peer。
+5. 在 3b 的最后一个测试中，我们遇到以下问题：
+   1. 达成共识需要的时间有时候比较长，这就会导致新 region 中无法产生 leade 与 Scheduler 进行心跳交互，来更新 Scheduler 中的 regions，产生 find no region 的错误。这一部分可能需要 pre-vote 来进行根本性地解决，但时间不够，希望以后有时间解决这个遗憾。
+   2. 会有一定概率遇到“多数据”的问题，经排查发现 snap response 中会包含当前 peer 的 region 引用返回，但是这时可能会产生的一个问题时，当返回时 region 是正常的，但当 client 端要根据这个 region 来读的时候，刚好有一个 split 命令改变了 region 的 startKey 或者 endKey，最后导致 client 端多读。该问题有同学在群中反馈应该测试中对 region 进行复制。
+   3. 会有一定概率遇到“少数据”的问题，这是因为当 peer 未初始化时，apply snapshot 时不能删除之前的元数据和数据。
+
 ### lab3c
 
 本部分主要涉及对收集到的心跳信息进行选择性维护和对 balance-region 策略的具体实现两个工作，主要涉及修改的代码文件是 cluster.go 和 balance_region.go

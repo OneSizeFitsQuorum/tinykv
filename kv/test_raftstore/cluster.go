@@ -3,7 +3,6 @@ package test_raftstore
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
@@ -272,9 +271,9 @@ func (c *Cluster) GetRegion(key []byte) *metapb.Region {
 		}
 		// We may meet range gap after split, so here we will
 		// retry to get the region again.
-		SleepMS(20)
+		SleepMS(35)
 	}
-	panic(fmt.Sprintf("find no region for %s", hex.EncodeToString(key)))
+	panic(fmt.Sprintf("find no region for %s, key:%v", string(key), key))
 }
 
 func (c *Cluster) GetRandomRegion() *metapb.Region {
@@ -366,6 +365,7 @@ func (c *Cluster) Scan(start, end []byte) [][]byte {
 			panic(resp.Header.Error)
 		}
 		if len(resp.Responses) != 1 {
+			fmt.Printf("Scan(), len(resp.Responses):%v\n", len(resp.Responses))
 			panic("len(resp.Responses) != 1")
 		}
 		if resp.Responses[0].CmdType != raft_cmdpb.CmdType_Snap {
@@ -401,6 +401,7 @@ func (c *Cluster) TransferLeader(regionID uint64, leader *metapb.Peer) {
 	}
 	epoch := region.RegionEpoch
 	transferLeader := NewAdminRequest(regionID, epoch, NewTransferLeaderCmd(leader))
+
 	resp, _ := c.CallCommandOnLeader(transferLeader, 5*time.Second)
 	if resp.AdminResponse.CmdType != raft_cmdpb.AdminCmdType_TransferLeader {
 		panic("resp.AdminResponse.CmdType != raft_cmdpb.AdminCmdType_TransferLeader")
@@ -409,6 +410,8 @@ func (c *Cluster) TransferLeader(regionID uint64, leader *metapb.Peer) {
 
 func (c *Cluster) MustTransferLeader(regionID uint64, leader *metapb.Peer) {
 	timer := time.Now()
+	fmt.Printf("send MustTransferLeader to : %v\n", leader.Id)
+
 	for {
 		currentLeader := c.LeaderOfRegion(regionID)
 		if currentLeader.Id == leader.Id &&
@@ -423,6 +426,7 @@ func (c *Cluster) MustTransferLeader(regionID uint64, leader *metapb.Peer) {
 }
 
 func (c *Cluster) MustAddPeer(regionID uint64, peer *metapb.Peer) {
+	log.Infof("MustAddPeer regionId:%v, peerId:%v, storeId:%v-------------", regionID, peer.Id, peer.StoreId)
 	c.schedulerClient.AddPeer(regionID, peer)
 	c.MustHavePeer(regionID, peer)
 }

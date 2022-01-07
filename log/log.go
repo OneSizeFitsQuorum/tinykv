@@ -228,7 +228,7 @@ func (l *Logger) Info(v ...interface{}) {
 }
 
 func (l *Logger) Infof(format string, v ...interface{}) {
-	l.logf(LOG_INFO, format, v...)
+	//l.logf(LOG_INFO, format, v...)
 }
 
 func StringToLogLevel(level string) LogLevel {

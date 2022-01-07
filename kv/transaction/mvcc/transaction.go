@@ -3,6 +3,7 @@ package mvcc
 import (
 	"bytes"
 	"encoding/binary"
+
 	"github.com/pingcap-incubator/tinykv/kv/util/engine_util"
 
 	"github.com/pingcap-incubator/tinykv/kv/storage"

@@ -222,15 +222,17 @@ func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash
 				if (rand.Int() % 1000) < 500 {
 					key := strconv.Itoa(cli) + " " + fmt.Sprintf("%08d", j)
 					value := "x " + strconv.Itoa(cli) + " " + strconv.Itoa(j) + " y"
-					// log.Infof("%d: client new put %v,%v\n", cli, key, value)
+					//log.Infof("%d: client new put %v,%v\n", cli, key, value)
 					cluster.MustPut([]byte(key), []byte(value))
+					// log.Infof("%d: client new put %v,%v response back\n", cli, key, value)
 					last = NextValue(last, value)
 					j++
 				} else {
 					start := strconv.Itoa(cli) + " " + fmt.Sprintf("%08d", 0)
 					end := strconv.Itoa(cli) + " " + fmt.Sprintf("%08d", j)
-					// log.Infof("%d: client new scan %v-%v\n", cli, start, end)
+					//log.Infof("%d: client new scan %v-%v， expected ret:%v\n", cli, start, end, 1)
 					values := cluster.Scan([]byte(start), []byte(end))
+					// log.Infof("%d: client new scan %v-%v response back\n", cli, start, end)
 					v := string(bytes.Join(values, []byte("")))
 					if v != last {
 						log.Fatalf("get wrong value, client %v\nwant:%v\ngot: %v\n", cli, last, v)
@@ -265,7 +267,7 @@ func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash
 			time.Sleep(electionTimeout)
 		}
 
-		// log.Printf("wait for clients\n")
+		log.Infof("wait for clients\n")
 		<-ch_clients
 
 		if crash {
@@ -284,7 +286,7 @@ func GenericTest(t *testing.T, part string, nclients int, unreliable bool, crash
 		}
 
 		for cli := 0; cli < nclients; cli++ {
-			// log.Printf("read from clients %d\n", cli)
+			log.Infof("read from clients %d\n", cli)
 			j := <-clnts[cli]
 
 			// if j < 10 {
@@ -543,11 +545,17 @@ func TestTransferLeader3B(t *testing.T) {
 	defer cluster.Shutdown()
 
 	regionID := cluster.GetRegion([]byte("")).GetId()
+	fmt.Println("start")
 	cluster.MustTransferLeader(regionID, NewPeer(1, 1))
+	fmt.Println("1 done")
 	cluster.MustTransferLeader(regionID, NewPeer(2, 2))
+	fmt.Println("2 done")
 	cluster.MustTransferLeader(regionID, NewPeer(3, 3))
+	t.Logf("3 done")
 	cluster.MustTransferLeader(regionID, NewPeer(4, 4))
+	t.Logf("4 done")
 	cluster.MustTransferLeader(regionID, NewPeer(5, 5))
+	t.Logf("5 done")
 }
 
 func TestBasicConfChange3B(t *testing.T) {
@@ -567,22 +575,28 @@ func TestBasicConfChange3B(t *testing.T) {
 	MustGetNone(cluster.engines[2], []byte("k1"))
 
 	// add peer (2, 2) to region 1
+	fmt.Printf("MustAddPeer(1, NewPeer(2, 2))-------------------------\n")
 	cluster.MustAddPeer(1, NewPeer(2, 2))
+	fmt.Printf("MustPut([]byte(\"k2\"), []byte(\"v2\"))-------------------------\n")
 	cluster.MustPut([]byte("k2"), []byte("v2"))
+	fmt.Printf("MustGet([]byte(\"k2\"), []byte(\"v2\"))-------------------------\n")
 	cluster.MustGet([]byte("k2"), []byte("v2"))
 	MustGetEqual(cluster.engines[2], []byte("k1"), []byte("v1"))
 	MustGetEqual(cluster.engines[2], []byte("k2"), []byte("v2"))
 
 	epoch := cluster.GetRegion([]byte("k1")).GetRegionEpoch()
 	assert.True(t, epoch.GetConfVer() > 1)
-
+	fmt.Printf("assert.True(t, epoch.GetConfVer() > 1) done---------------------\n")
 	// peer 5 must not exist
 	MustGetNone(cluster.engines[5], []byte("k1"))
 
 	// add peer (3, 3) to region 1
+	fmt.Printf("MustAddPeer(1, NewPeer(3, 3))-------------------------\n")
 	cluster.MustAddPeer(1, NewPeer(3, 3))
+	fmt.Printf("MustRemovePeer(1, NewPeer(2, 2))-------------------------\n")
 	cluster.MustRemovePeer(1, NewPeer(2, 2))
 
+	fmt.Printf("MustPut([]byte(\"k3\"), []byte(\"v3\"))-------------------------\n")
 	cluster.MustPut([]byte("k3"), []byte("v3"))
 	cluster.MustGet([]byte("k3"), []byte("v3"))
 	MustGetEqual(cluster.engines[3], []byte("k1"), []byte("v1"))
@@ -590,21 +604,27 @@ func TestBasicConfChange3B(t *testing.T) {
 	MustGetEqual(cluster.engines[3], []byte("k3"), []byte("v3"))
 
 	// peer 2 has nothing
+	fmt.Printf("peer 2 has nothing------------------------------\n")
 	MustGetNone(cluster.engines[2], []byte("k1"))
 	MustGetNone(cluster.engines[2], []byte("k2"))
 
+	fmt.Printf("MustAddPeer(1, NewPeer(2, 2))-------------------------\n")
 	cluster.MustAddPeer(1, NewPeer(2, 2))
 	MustGetEqual(cluster.engines[2], []byte("k1"), []byte("v1"))
 	MustGetEqual(cluster.engines[2], []byte("k2"), []byte("v2"))
 	MustGetEqual(cluster.engines[2], []byte("k3"), []byte("v3"))
 
 	// remove peer (2, 2) from region 1
+	fmt.Printf("MustRemovePeer(1, NewPeer(2, 2))-------------------------\n")
 	cluster.MustRemovePeer(1, NewPeer(2, 2))
 	// add peer (2, 4) to region 1
+	fmt.Printf("MustAddPeer(1, NewPeer(2, 4))-------------------------\n")
 	cluster.MustAddPeer(1, NewPeer(2, 4))
 	// remove peer (3, 3) from region 1
+	fmt.Printf("MustRemovePeer(1, NewPeer(3, 3))-------------------------\n")
 	cluster.MustRemovePeer(1, NewPeer(3, 3))
 
+	fmt.Printf("MustPut([]byte(\"k4\"), []byte(\"v4\"))-------------------------\n")
 	cluster.MustPut([]byte("k4"), []byte("v4"))
 	MustGetEqual(cluster.engines[2], []byte("k1"), []byte("v1"))
 	MustGetEqual(cluster.engines[2], []byte("k4"), []byte("v4"))

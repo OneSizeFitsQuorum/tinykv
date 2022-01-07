@@ -189,6 +189,7 @@ func (m *MockSchedulerClient) GetRegion(ctx context.Context, key []byte) (*metap
 	m.RLock()
 	defer m.RUnlock()
 	region, leader := m.getRegionLocked(key)
+	//log.Infof("GetRegion() region:%v, leader:%v\n", region, leader)
 	return region, leader, nil
 }
 

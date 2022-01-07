@@ -179,7 +179,6 @@ func (ps *PeerStorage) Snapshot() (eraftpb.Snapshot, error) {
 		return snapshot, err
 	}
 
-	log.Infof("%s requesting snapshot", ps.Tag)
 	ps.snapTriedCnt++
 	ch := make(chan *eraftpb.Snapshot, 1)
 	ps.snapState = snap.SnapState{
@@ -344,20 +343,49 @@ func (ps *PeerStorage) Append(entries []eraftpb.Entry, raftWB *engine_util.Write
 
 // Apply the peer with given snapshot
 func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_util.WriteBatch, raftWB *engine_util.WriteBatch) (*ApplySnapResult, error) {
+	txn1 := ps.Engines.Kv.NewTransaction(false)
+	defer txn1.Discard()
+	iter1 := txn1.NewIterator(badger.DefaultIteratorOptions)
+	values := make([][]byte, 0)
+	for iter1.Seek(ps.region.StartKey); iter1.Valid(); iter1.Next() {
+		key := iter1.Item().Key()
+		if engine_util.ExceedEndKey(iter1.Item().Key(), ps.region.EndKey) {
+			log.Infof(string(key))
+			break
+		}
+		value, err := iter1.Item().ValueCopy(nil)
+		if err != nil {
+			panic(err)
+		}
+		values = append(values, value)
+	}
+	iter1.Close()
+
+	log.Infof("before apply result,ps.region:%v,values:%v\n ", ps.region, string(bytes.Join(values, []byte(""))))
+
 	log.Infof("%v begin to apply snapshot", ps.Tag)
 	snapData := new(rspb.RaftSnapshotData)
 	if err := snapData.Unmarshal(snapshot.Data); err != nil {
 		return nil, err
 	}
 
+	prevRegion := &metapb.Region{
+		Id:          ps.region.Id,
+		StartKey:    ps.region.StartKey,
+		EndKey:      ps.region.EndKey,
+		RegionEpoch: ps.region.RegionEpoch,
+		Peers:       ps.region.Peers,
+	}
 	// Hint: things need to do here including: update peer storage state like raftState and applyState, etc,
 	// and send RegionTaskApply task to region worker through ps.regionSched, also remember call ps.clearMeta
 	// and ps.clearExtraData to delete stale data
 
-	if err := ps.clearMeta(kvWB, raftWB); err != nil {
-		return nil, err
+	if ps.isInitialized() {
+		if err := ps.clearMeta(kvWB, raftWB); err != nil {
+			return nil, err
+		}
+		ps.clearExtraData(snapData.Region)
 	}
-	ps.clearExtraData(snapData.Region)
 
 	ps.applyState.AppliedIndex = snapshot.Metadata.Index
 	ps.applyState.TruncatedState.Index = snapshot.Metadata.Index
@@ -382,7 +410,7 @@ func (ps *PeerStorage) ApplySnapshot(snapshot *eraftpb.Snapshot, kvWB *engine_ut
 	<-notifier
 
 	return &ApplySnapResult{
-		PrevRegion: ps.region,
+		PrevRegion: prevRegion,
 		Region:     snapData.GetRegion(),
 	}, nil
 }
@@ -433,6 +461,8 @@ func (ps *PeerStorage) ClearData() {
 }
 
 func (ps *PeerStorage) clearRange(regionID uint64, start, end []byte) {
+	log.Infof("clearRange(), %s, regionID:%v, start:%v, end:%v", ps.Tag, regionID, string(start), string(end))
+
 	ps.regionSched <- &runner.RegionTaskDestroy{
 		RegionId: regionID,
 		StartKey: start,

@@ -80,7 +80,7 @@ func (l *DefaultLogger) Info(v ...interface{}) {
 }
 
 func (l *DefaultLogger) Infof(format string, v ...interface{}) {
-	l.Output(calldepth, header("INFO", fmt.Sprintf(format, v...)))
+	//l.Output(calldepth, header("INFO", fmt.Sprintf(format, v...)))
 }
 
 func (l *DefaultLogger) Error(v ...interface{}) {

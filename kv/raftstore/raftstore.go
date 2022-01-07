@@ -129,6 +129,7 @@ func (bs *Raftstore) loadPeers() ([]*peer, error) {
 			if bytes.Compare(item.Key(), endKey) >= 0 {
 				break
 			}
+
 			regionID, suffix, err := meta.DecodeRegionMetaKey(item.Key())
 			if err != nil {
 				return err

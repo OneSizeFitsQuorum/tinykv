@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -132,10 +131,10 @@ func (snapCtx *snapContext) handleApply(regionId uint64, notifier chan<- bool, s
 func (snapCtx *snapContext) cleanUpRange(regionId uint64, startKey, endKey []byte) {
 	if err := engine_util.DeleteRange(snapCtx.engines.Kv, startKey, endKey); err != nil {
 		log.Fatalf("failed to delete data in range, [regionId: %d, startKey: %s, endKey: %s, err: %v]", regionId,
-			hex.EncodeToString(startKey), hex.EncodeToString(endKey), err)
+			string(startKey), string(endKey), err)
 	} else {
 		log.Infof("succeed in deleting data in range. [regionId: %d, startKey: %s, endKey: %s]", regionId,
-			hex.EncodeToString(startKey), hex.EncodeToString(endKey))
+			string(startKey), string(endKey))
 	}
 }
 
@@ -198,6 +197,7 @@ func doSnapshot(engines *engine_util.Engines, mgr *snap.SnapManager, regionId ui
 		return nil, err
 	}
 	// Set snapshot data
+	log.Infof("begin to generate a snapshot. [regionId: %d] region:%v", regionId, region)
 	snapshotData := &rspb.RaftSnapshotData{Region: region}
 	snapshotStatics := snap.SnapStatistics{}
 	err = s.Build(txn, region, snapshotData, &snapshotStatics, mgr)

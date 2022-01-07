@@ -121,7 +121,7 @@ func MustGetCfNone(engine *engine_util.Engines, cf string, key []byte) {
 		}
 		SleepMS(20)
 	}
-	panic(fmt.Sprintf("get value %s for key %s", hex.EncodeToString(val), hex.EncodeToString(key)))
+	panic(fmt.Sprintf("get value %s for key %s, time:%v", hex.EncodeToString(val), hex.EncodeToString(key), time.Now()))
 }
 
 func MustGetNone(engine *engine_util.Engines, key []byte) {

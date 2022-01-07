@@ -336,21 +336,22 @@ func (r *Raft) tick() {
 	}
 }
 
-// becomeFollower transform this peer's state to Follower
 func (r *Raft) becomeFollower(term uint64, lead uint64) {
 	r.reset(term)
 	r.Lead = lead
 	r.State = StateFollower
-	r.logger.Infof("%x become follower at term %d with Lead=%d，lastTerm=%d, lastIndex=%d, commitIndex=%d, applyIndex=%d",
+	r.logger.Infof("%d become follower at term %d with Lead=%d，lastTerm=%d, lastIndex=%d, commitIndex=%d, applyIndex=%d",
 		r.id, r.Term, r.Lead, r.RaftLog.lastTerm(), r.RaftLog.LastIndex(), r.RaftLog.committed, r.RaftLog.applied)
 }
 
 // becomeCandidate transform this peer's state to candidate
 func (r *Raft) becomeCandidate() {
+
 	r.reset(r.Term + 1)
+
 	r.Vote = r.id
 	r.State = StateCandidate
-	r.logger.Infof("%x become candidate at term %d with lastTerm=%d, lastIndex=%d, commitIndex=%d, applyIndex=%d",
+	r.logger.Infof("%d become candidate at term %d with lastTerm=%d, lastIndex=%d, commitIndex=%d, applyIndex=%d",
 		r.id, r.Term, r.RaftLog.lastTerm(), r.RaftLog.LastIndex(), r.RaftLog.committed, r.RaftLog.applied)
 }
 
@@ -368,7 +369,7 @@ func (r *Raft) becomeLeader() {
 
 	emptyEnt := pb.Entry{Data: nil}
 	if r.appendEntry([]*pb.Entry{&emptyEnt}...) {
-		r.logger.Infof("%x append a empty entry at term %d with index=%d",
+		r.logger.Infof("%d append a empty entry at term %d with index=%d",
 			r.id, r.Term, r.RaftLog.LastIndex())
 	} else {
 		// This won't happen because we just called reset() above.
@@ -416,7 +417,7 @@ func (r *Raft) stepFollower(m pb.Message) error {
 func (r *Raft) stepCandidate(m pb.Message) error {
 	switch m.MsgType {
 	case pb.MessageType_MsgPropose:
-		r.logger.Infof("%x no leader at term %d; dropping proposal", r.id, r.Term)
+		r.logger.Infof("%d no leader at term %d; dropping proposal", r.id, r.Term)
 		return ErrProposalDropped
 	case pb.MessageType_MsgAppend:
 		r.becomeFollower(m.Term, m.From)
@@ -515,8 +516,6 @@ func (r *Raft) stepLeader(m pb.Message) error {
 			}
 		}
 	case pb.MessageType_MsgHeartbeatResponse:
-		r.logger.Infof("%x received MsgHeartbeatResponse(lastindex: %d) from %x for index %d",
-			r.id, m.From, m.Index)
 		if pr.Match < r.RaftLog.LastIndex() {
 			r.sendAppend(m.From)
 		}
@@ -877,7 +876,7 @@ func (r *Raft) hup() {
 		return
 	}
 
-	r.logger.Infof("%x is starting a new election at term %d", r.id, r.Term)
+	r.logger.Infof("%d is starting a new election at term %d", r.id, r.Term)
 	r.becomeCandidate()
 	if res := r.poll(r.id, true); res == VoteWon {
 		// We won the election after voting for ourselves (which must mean that
@@ -889,7 +888,7 @@ func (r *Raft) hup() {
 		if id == r.id {
 			continue
 		}
-		r.logger.Infof("%x [logterm: %d, index: %d] sent MessageType_MsgRequestVote request to %x at term %d",
+		r.logger.Infof("%d [logterm: %d, index: %d] sent MessageType_MsgRequestVote request to %d at term %d",
 			r.id, r.RaftLog.lastTerm(), r.RaftLog.LastIndex(), id, r.Term)
 		r.send(pb.Message{Term: r.Term, To: id, MsgType: pb.MessageType_MsgRequestVote, Index: r.RaftLog.LastIndex(), LogTerm: r.RaftLog.lastTerm()})
 	}
@@ -936,7 +935,6 @@ func (r *Raft) abortLeaderTransfer() {
 }
 
 func (r *Raft) switchToConfig() {
-	r.logger.Infof("%x switched to configuration", r.id)
 
 	_, ok := r.Prs.Progress[r.id]
 
